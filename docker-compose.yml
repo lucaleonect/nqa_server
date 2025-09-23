@@ -24,7 +24,7 @@ services:
       - "8000:8000"
 
   spark-master:
-    image: bitnami/spark:3.5
+    image: bitnami/spark:4.0.0
     environment:
       - SPARK_MODE=master
       - SPARK_NO_DAEMONIZE=true
@@ -39,9 +39,12 @@ services:
     build: ./services/spark-gpu-worker   # ⬅ build the GPU worker image here
     environment:
       SPARK_MASTER_URL: "spark://spark-master:7077"
+      NVIDIA_VISIBLE_DEVICES: "0"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
     volumes:
       - shared-data:/data
       - ./services/solver:/solver:ro
+    runtime: nvidia
     gpus: all
     depends_on:
       - spark-master

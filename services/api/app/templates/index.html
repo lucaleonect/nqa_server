@@ -7,20 +7,99 @@
     <style>
         body {
             font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-            margin: 2rem;
+            margin: 1.5rem;
+            color: #222;
+        }
+
+        form {
+            max-width: 780px;
+        }
+
+        label {
+            display: block;
+            margin: 0.4rem 0;
+        }
+
+        #solverArgs {
+            display: flex;
+            flex-direction: column;
+            gap: 0.9rem;
+            margin-top: 1rem;
+        }
+
+        .arg-row {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 0.65rem 0.75rem;
+            background: #fafafa;
+            display: grid;
+            grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr);
+            gap: 0.6rem;
+            font-size: 0.92rem;
+        }
+
+        .arg-title {
+            font-weight: 600;
+        }
+
+        .arg-meta {
+            color: #555;
+            font-size: 0.78rem;
+        }
+
+        .arg-control input[type="text"],
+        .arg-control input[type="number"] {
+            width: 100%;
+            padding: 0.35rem 0.55rem;
+            border: 1px solid #bfc3c8;
+            border-radius: 4px;
+            font-size: 0.95rem;
+            background: #fff;
+        }
+
+        .arg-control small {
+            display: block;
+            color: #636363;
+            margin-top: 0.25rem;
+            font-size: 0.78rem;
+            line-height: 1.2;
+        }
+
+        .arg-control label.toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-weight: 500;
+        }
+
+        .arg-control input[type="checkbox"] {
+            transform: scale(1.05);
+        }
+
+        .hint {
+            color: #434343;
+            font-size: 0.85rem;
+            margin: 0.5rem 0 0;
         }
 
         .job {
             border: 1px solid #ddd;
-            padding: 0.75rem 1rem;
+            padding: 0.7rem 0.9rem;
             border-radius: 8px;
-            margin: 0.5rem 0;
+            margin: 0.4rem 0;
+            font-size: 0.92rem;
         }
 
         code {
             background: #f6f8fa;
-            padding: 0.2rem 0.4rem;
+            padding: 0.18rem 0.35rem;
             border-radius: 4px;
+        }
+
+        @media (max-width: 720px) {
+            .arg-row {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -28,8 +107,21 @@
 <body>
     <h1>nqa-server</h1>
     <form id="uploadForm">
-        <input type="file" name="file" accept=".npy" required />
-        <button type="submit">Submit J matrix</button>
+        <label>
+            J matrix (.npy)
+            <input type="file" name="file" accept=".npy" required />
+        </label>
+        <label>
+            h vector (.npy, optional)
+            <input type="file" name="h_vector" accept=".npy" />
+        </label>
+        <label>
+            g vector (.npy, optional)
+            <input type="file" name="g_vector" accept=".npy" />
+        </label>
+        <p class="hint">Leave optional fields blank to use solver defaults.</p>
+        <div id="solverArgs"></div>
+        <button type="submit">Submit job</button>
     </form>
     <p id="msg"></p>
     <h2>Jobs</h2>
@@ -37,6 +129,366 @@
     <script>
         const jobsDiv = document.getElementById('jobs');
         const msg = document.getElementById('msg');
+        const solverArgsContainer = document.getElementById('solverArgs');
+
+        const CLI_ARGUMENTS = [
+            {
+                name: 'prng_seed',
+                label: 'Random seed',
+                kind: 'number',
+                step: '1',
+                placeholder: '',
+                defaultLabel: 'auto (timestamp)',
+                help: 'Set a PRNG seed to make results reproducible. Leave blank to use the current timestamp.',
+            },
+            {
+                name: 'h_value',
+                label: 'Uniform h value',
+                kind: 'number',
+                step: 'any',
+                placeholder: 'e.g. 0.5',
+                defaultLabel: 'zero vector',
+                help: 'Sets a uniform magnetic field. Cannot be combined with an uploaded h vector.',
+            },
+            {
+                name: 'g_value',
+                label: 'Uniform g value',
+                kind: 'number',
+                step: 'any',
+                placeholder: 'e.g. 1.2',
+                defaultLabel: 'classical target (unset)',
+                help: 'Sets a uniform transverse field. Leave blank (or upload g vector) for classical target behaviour.',
+            },
+            {
+                name: 'energy_shift',
+                label: 'Energy shift',
+                kind: 'number',
+                step: 'any',
+                placeholder: '0.0',
+                defaultLabel: '0.0',
+                defaultValue: 0,
+                prefill: true,
+                help: 'Constant shift applied to the energy landscape.',
+            },
+            {
+                name: 'vqa_num_annealing_steps',
+                label: 'Annealing steps',
+                kind: 'number',
+                step: '1',
+                placeholder: '10000',
+                defaultLabel: '10000',
+                defaultValue: 10000,
+                prefill: true,
+                help: 'Total annealing steps for the VQA.',
+            },
+            {
+                name: 'vqa_num_warmup_steps',
+                label: 'Warmup steps',
+                kind: 'number',
+                step: '1',
+                placeholder: '1',
+                defaultLabel: '1',
+                defaultValue: 1,
+                prefill: true,
+                help: 'Warmup steps before annealing begins.',
+            },
+            {
+                name: 'vqa_num_updates_per_step',
+                label: 'Updates per step',
+                kind: 'number',
+                step: '1',
+                placeholder: '1',
+                defaultLabel: '1',
+                defaultValue: 1,
+                prefill: true,
+                help: 'Parameter updates executed at each annealing step.',
+            },
+            {
+                name: 'vqa_num_finetuning_steps',
+                label: 'Finetuning steps',
+                kind: 'number',
+                step: '1',
+                placeholder: '100',
+                defaultLabel: '100',
+                defaultValue: 100,
+                prefill: true,
+                help: 'Additional steps after annealing to refine the solution.',
+            },
+            {
+                name: 'vqa_annealing_field_scale',
+                label: 'Annealing field scale',
+                kind: 'number',
+                step: 'any',
+                placeholder: '1.0',
+                defaultLabel: '1.0',
+                defaultValue: 1,
+                prefill: true,
+                help: 'Scaling factor applied to the annealing field.',
+            },
+            {
+                name: 'vqa_catalyst_field_scale',
+                label: 'Catalyst field scale',
+                kind: 'number',
+                step: 'any',
+                placeholder: '1.0',
+                defaultLabel: '1.0',
+                defaultValue: 1,
+                prefill: true,
+                help: 'Scaling factor applied to the catalyst field.',
+            },
+            {
+                name: 'vqa_no_catalyst',
+                title: 'Catalyst',
+                label: 'Disable catalyst',
+                kind: 'bool',
+                defaultLabel: 'uses catalyst',
+                help: 'Check to disable the catalyst contribution (default behaviour keeps it enabled).',
+            },
+            {
+                name: 'sgd_learning_rate',
+                label: 'SGD learning rate',
+                kind: 'number',
+                step: 'any',
+                placeholder: '0.1',
+                defaultLabel: '0.1',
+                defaultValue: 0.1,
+                prefill: true,
+                help: 'Learning rate used by SGD.',
+            },
+            {
+                name: 'sgd_momentum',
+                label: 'SGD momentum',
+                kind: 'number',
+                step: 'any',
+                placeholder: '0.5',
+                defaultLabel: '0.5',
+                defaultValue: 0.5,
+                prefill: true,
+                help: 'Momentum coefficient for SGD.',
+            },
+            {
+                name: 'sr_prefactor',
+                label: 'SR prefactor',
+                kind: 'text',
+                placeholder: '1.0+0.0j',
+                defaultLabel: '1.0+0.0j',
+                defaultValue: '1.0+0.0j',
+                prefill: true,
+                help: 'Prefactor applied in the natural gradients method.',
+            },
+            {
+                name: 'sr_diagonal_shift',
+                label: 'SR diagonal shift',
+                kind: 'number',
+                step: 'any',
+                placeholder: '0.01',
+                defaultLabel: '0.01',
+                defaultValue: 0.01,
+                prefill: true,
+                help: 'Diagonal shift added before computing the pseudoinverse.',
+            },
+            {
+                name: 'dbqs_num_hidden_layers',
+                label: 'Hidden layers',
+                kind: 'number',
+                step: '1',
+                placeholder: '2',
+                defaultLabel: '2',
+                defaultValue: 2,
+                prefill: true,
+                help: 'Number of hidden layers in the DBQS.',
+            },
+            {
+                name: 'dbqs_unit_density_per_layer',
+                label: 'Unit density per layer',
+                kind: 'number',
+                step: 'any',
+                placeholder: '1.0',
+                defaultLabel: '1.0',
+                defaultValue: 1,
+                prefill: true,
+                help: 'Density of hidden units per layer. 1 equals one unit per visible spin.',
+            },
+            {
+                name: 'dbqs_param_dtype',
+                title: 'Parameter dtype',
+                label: 'Use float parameter dtype',
+                kind: 'toggle',
+                defaultLabel: 'complex',
+                altValue: 'float',
+                help: 'Switch DBQS parameters to float precision (requires disabling the catalyst).',
+            },
+            {
+                name: 'dbqs_use_bias',
+                title: 'DBQS bias',
+                label: 'Remove DBQS bias',
+                kind: 'bool',
+                defaultLabel: 'bias enabled',
+                help: 'Unchecked keeps bias terms (default). Check to drop them.',
+            },
+            {
+                name: 'mcmc_num_samples',
+                label: 'Number of samples',
+                kind: 'number',
+                step: '1',
+                placeholder: '128',
+                defaultLabel: '128',
+                defaultValue: 128,
+                prefill: true,
+                help: 'Total samples drawn to compute observables.',
+            },
+            {
+                name: 'mcmc_num_chains',
+                label: 'Number of chains',
+                kind: 'number',
+                step: '1',
+                placeholder: '',
+                defaultLabel: 'matches samples',
+                defaultValue: 128,
+                prefill: true,
+                help: 'Parallel chains to run. Defaults to the number of samples.',
+            },
+            {
+                name: 'mcmc_num_thermalization_steps',
+                label: 'Thermalization steps',
+                kind: 'number',
+                step: '1',
+                placeholder: '128',
+                defaultLabel: '128',
+                defaultValue: 128,
+                prefill: true,
+                help: 'Thermalisation steps per chain.',
+            },
+            {
+                name: 'mcmc_num_sweep_steps',
+                label: 'Sweep steps',
+                kind: 'number',
+                step: '1',
+                placeholder: '16',
+                defaultLabel: '16',
+                defaultValue: 16,
+                prefill: true,
+                help: 'Sweep steps executed per chain.',
+            },
+            {
+                name: 'mcmc_disable_persistent_markov_chains',
+                title: 'Persistent chains',
+                label: 'Disable persistent chains',
+                kind: 'bool',
+                defaultLabel: 'persistent enabled',
+                help: 'Check to disable persistent Markov chains.',
+            },
+        ];
+
+        function renderSolverArgs() {
+            CLI_ARGUMENTS.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'arg-row';
+
+                const info = document.createElement('div');
+                const title = document.createElement('div');
+                title.className = 'arg-title';
+                title.textContent = item.title || item.label;
+                info.appendChild(title);
+                if (item.defaultLabel) {
+                    const meta = document.createElement('div');
+                    meta.className = 'arg-meta';
+                    meta.textContent = `default: ${item.defaultLabel}`;
+                    info.appendChild(meta);
+                }
+
+                const control = document.createElement('div');
+                control.className = 'arg-control';
+
+                if (item.kind === 'number' || item.kind === 'text') {
+                    const input = document.createElement('input');
+                    input.type = item.kind === 'number' ? 'number' : 'text';
+                    input.name = item.name;
+                    input.id = `arg_${item.name}`;
+                    if (item.placeholder) {
+                        input.placeholder = item.placeholder;
+                    }
+                    if (item.step) {
+                        input.step = item.step;
+                    } else if (item.kind === 'number') {
+                        input.step = 'any';
+                    }
+                    if (item.prefill && item.defaultValue !== undefined && item.defaultValue !== null) {
+                        input.value = item.defaultValue;
+                    }
+                    control.appendChild(input);
+                } else if (item.kind === 'bool') {
+                    const checkboxLabel = document.createElement('label');
+                    checkboxLabel.className = 'toggle';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.name = item.name;
+                    checkbox.value = '1';
+                    checkboxLabel.appendChild(checkbox);
+                    checkboxLabel.appendChild(document.createTextNode(item.label));
+                    control.appendChild(checkboxLabel);
+                } else if (item.kind === 'toggle') {
+                    const checkboxLabel = document.createElement('label');
+                    checkboxLabel.className = 'toggle';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.name = item.name;
+                    checkbox.value = item.altValue || '1';
+                    checkboxLabel.appendChild(checkbox);
+                    checkboxLabel.appendChild(document.createTextNode(item.label));
+                    control.appendChild(checkboxLabel);
+                }
+
+                if (item.help) {
+                    const hint = document.createElement('small');
+                    hint.textContent = item.help;
+                    control.appendChild(hint);
+                }
+
+                row.appendChild(info);
+                row.appendChild(control);
+                solverArgsContainer.appendChild(row);
+            });
+        }
+
+        function setupSampleChainSync() {
+            const samples = document.querySelector('input[name="mcmc_num_samples"]');
+            const chains = document.querySelector('input[name="mcmc_num_chains"]');
+            if (!samples || !chains) {
+                return;
+            }
+
+            let chainsTouched = false;
+            const maybeSync = () => {
+                if (!chainsTouched) {
+                    chains.value = samples.value;
+                }
+            };
+
+            chains.addEventListener('input', () => {
+                chainsTouched = true;
+            });
+            chains.addEventListener('focus', () => {
+                chainsTouched = true;
+            });
+            chains.addEventListener('change', () => {
+                chainsTouched = true;
+            });
+            chains.addEventListener('blur', () => {
+                if (chains.value === '') {
+                    chainsTouched = false;
+                    maybeSync();
+                }
+            });
+
+            samples.addEventListener('input', maybeSync);
+            samples.addEventListener('change', maybeSync);
+
+            maybeSync();
+        }
+
+        renderSolverArgs();
+        setupSampleChainSync();
 
 
         async function refresh() {
@@ -56,9 +508,34 @@
 
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const formData = new FormData(e.target);
+            const form = e.target;
+            const formData = new FormData(form);
+
+            const maybeDeleteEmptyFile = (name) => {
+                const input = form.querySelector(`input[name="${name}"]`);
+                if (!input) return;
+                const file = input.files && input.files[0];
+                if (!file || !file.name || file.size === 0) {
+                    formData.delete(name);
+                }
+            };
+
+            // Ensure optional file fields are omitted when left blank
+            maybeDeleteEmptyFile('h_vector');
+            maybeDeleteEmptyFile('g_vector');
+
             const res = await fetch('/upload', { method: 'POST', body: formData });
-            if (res.ok) { msg.textContent = 'Queued.'; refresh(); } else { msg.textContent = 'Upload failed.'; }
+            if (res.ok) {
+                msg.textContent = 'Queued.';
+                refresh();
+            } else {
+                try {
+                    const err = await res.json();
+                    msg.textContent = `Upload failed: ${err.error || JSON.stringify(err)}`;
+                } catch (_) {
+                    msg.textContent = 'Upload failed.';
+                }
+            }
         });
 
 

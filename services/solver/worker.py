@@ -10,8 +10,8 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--cuda_device",
     type=str,
-    default=None,
-    help="CUDA device to use, e.g. '0' for the first GPU, '1' for the second, etc. If None, '0' will be used by default.",
+    default="0",
+    help="CUDA device to use, e.g. '0' for the first GPU, '1' for the second, etc.",
 )
 parser.add_argument(
     "--max_runtime",

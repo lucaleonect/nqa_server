@@ -79,11 +79,22 @@ def run_once(conn):
         f"spark.executorEnv.NQA_JOB_ID={job_id}",
         "--conf",
         f"spark.executorEnv.DATA_ROOT={DATA_ROOT}",
+        "--conf",
+        "spark.pyspark.python=/usr/local/bin/python3.11",
+        "--conf",
+        "spark.executorEnv.PYSPARK_PYTHON=/usr/local/bin/python3.11",
+        "--conf",
+        "spark.pyspark.driver.python=/usr/local/bin/python3.11",
         "/app/spark_job_gpu.py",
     ]
     print("[scheduler] spark-submit:", " ".join(cmd))
+    env = os.environ.copy()
+    env["NQA_JOB_ID"] = job_id
+    env.setdefault("DATA_ROOT", DATA_ROOT)
+    env.setdefault("PYSPARK_PYTHON", "/usr/local/bin/python3.11")
+    env.setdefault("PYSPARK_DRIVER_PYTHON", "/usr/local/bin/python3.11")
     try:
-        res = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        res = subprocess.run(cmd, check=False, capture_output=True, text=True, env=env)
         print(res.stdout)
         if res.returncode == 0:
             with conn.cursor() as cur:
