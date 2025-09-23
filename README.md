@@ -129,7 +129,6 @@ The `data.npz` bundle contains arrays logged at the chosen cadence (see `log_eve
 Example to read and inspect:
 
 ```python
-# From the repository root:
 import numpy as np
 d = np.load('runs/sk32_demo/data.npz')
 print('Final target energy:', d['target_energy'][-1,0])
