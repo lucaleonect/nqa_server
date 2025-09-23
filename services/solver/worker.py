@@ -180,7 +180,7 @@ parser.add_argument(
     help="Data type for the parameters of the Deep Boltzmann Quantum State. Accepted values are 'float' and 'complex'. Default is 'complex'.",
 )
 parser.add_argument(
-    "dbqs_use_bias",
+    "--dbqs_use_bias",
     action=argparse.BooleanOptionalAction,
     default=True,
     help="Whether to use bias terms in the Deep Boltzmann Quantum State. Default is True.",

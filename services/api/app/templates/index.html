@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>nqa-server</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            margin: 2rem;
+        }
+
+        .job {
+            border: 1px solid #ddd;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            margin: 0.5rem 0;
+        }
+
+        code {
+            background: #f6f8fa;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>nqa-server</h1>
+    <form id="uploadForm">
+        <input type="file" name="file" accept=".npy" required />
+        <button type="submit">Submit J matrix</button>
+    </form>
+    <p id="msg"></p>
+    <h2>Jobs</h2>
+    <div id="jobs"></div>
+    <script>
+        const jobsDiv = document.getElementById('jobs');
+        const msg = document.getElementById('msg');
+
+
+        async function refresh() {
+            const res = await fetch('/jobs');
+            const data = await res.json();
+            jobsDiv.innerHTML = '';
+            data.forEach(j => {
+                const el = document.createElement('div');
+                el.className = 'job';
+                el.innerHTML = `<strong>${j.id}</strong><br/>status: <code>${j.status}</code> &nbsp; file: ${j.filename} &nbsp; created: ${j.created_at}` +
+                    (j.status === 'DONE' ? ` &nbsp; <a href="/jobs/${j.id}/download">download results</a>` : '') +
+                    (j.status === 'FAILED' ? `<pre>${j.error || ''}</pre>` : '');
+                jobsDiv.appendChild(el);
+            });
+        }
+
+
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            if (res.ok) { msg.textContent = 'Queued.'; refresh(); } else { msg.textContent = 'Upload failed.'; }
+        });
+
+
+        refresh();
+        setInterval(refresh, 4000);
+    </script>
+</body>
+
+</html>

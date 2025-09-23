@@ -725,8 +725,8 @@ class DeepBoltzmannQuantumState:
         if not isinstance(self.num_chains, int) or self.num_chains <= 0:
             raise ValueError("num_chains must be a positive integer.")
 
-        if not isinstance(self.dtype, type(jnp.float64)) and not isinstance(self.dtype, type(jnp.complex128)):
-            raise ValueError("dtype must be a supported JAX dtype: jnp.float64 or jnp.complex128.")
+        if self.dtype not in (jnp.float64, jnp.complex128):
+            raise ValueError("dtype must be one of jnp.float64 or jnp.complex128.")
 
         if not isinstance(self.use_bias, bool):
             raise ValueError("use_bias must be a boolean value.")
