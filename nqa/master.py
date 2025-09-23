@@ -38,9 +38,9 @@ default_args = {
     "cuda_device": args.cuda_device,
     "max_runtime": args.trial_max_runtime,
     "J_matrix_path": args.J_matrix_path,
-    "vqa_num_warmup_steps": 1,
+    "vqa_num_warmup_steps": 10,
     "vqa_num_updates_per_step": 1,
-    "vqa_num_finetuning_steps": 1,
+    "vqa_num_finetuning_steps": 100,
     "dbqs_param_dtype": "complex",
     "mcmc_num_thermalization_steps": 2**7,
 }
@@ -65,8 +65,6 @@ dynamic_args = {
     "save_path": None,
 }
 flag_args = {
-    "mcmc_persistent_markov_chains",
-    "vqa_use_catalyst",
 }
 
 def start_annealer(cfg: dict):

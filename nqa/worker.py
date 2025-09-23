@@ -16,7 +16,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_runtime",
     type=int,
-    default=6 * 60 * 60,
+    default=60 * 60,
     help="Maximum runtime in seconds. After 10%% of the maximum runtime, the program will estimate the remaining runtime and halt if it exceeds the maximum runtime. Default is 6 hours (21600 seconds).",
 )
 parser.add_argument(
@@ -86,8 +86,8 @@ parser.add_argument(
 parser.add_argument(
     "--vqa_num_annealing_steps",
     type=int,
-    default=1000,
-    help="Number of annealing steps for the variational quantum annealer. Default is 1000.",
+    default=10000,
+    help="Number of annealing steps for the variational quantum annealer. Default is 10000.",
 )
 parser.add_argument(
     "--vqa_num_warmup_steps",
@@ -104,8 +104,8 @@ parser.add_argument(
 parser.add_argument(
     "--vqa_num_finetuning_steps",
     type=int,
-    default=1,
-    help="Number of finetuning steps after the annealing ends. Default is 1.",
+    default=100,
+    help="Number of finetuning steps after the annealing ends. Default is 100.",
 )
 parser.add_argument(
     "--vqa_annealing_field_scale",
@@ -114,30 +114,24 @@ parser.add_argument(
     help="Scaling factor for the annealing field. Default is 1.",
 )
 parser.add_argument(
-    "--vqa_no_annealing",
-    action=argparse.BooleanOptionalAction,
-    default=False,
-    help="Disable annealing and runs vanilla SR.",
-)
-parser.add_argument(
-    "--vqa_use_catalyst",
-    action=argparse.BooleanOptionalAction,
-    default=True,
-    help="Use catalyst for the annealing.",
-)
-parser.add_argument(
     "--vqa_catalyst_field_scale",
     type=float,
     default=1,
     help="Scaling factor for the catalyst field. Default is 1.",
+)
+parser.add_argument(
+    "--vqa_no_catalyst",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help="Disable catalyst for the annealing.",
 )
 
 # Optimizer settings
 parser.add_argument(
     "--sgd_learning_rate",
     type=float,
-    default=1e-2,
-    help="Learning rate for the SGD optimizer. Default is 1e-2.",
+    default=1e-1,
+    help="Learning rate for the SGD optimizer. Default is 1e-1.",
 )
 parser.add_argument(
     "--sgd_momentum",
@@ -154,24 +148,24 @@ parser.add_argument(
     help="Prefactor for the natural gradients method.",
 )
 parser.add_argument(
+    "--sr_diagonal_shift",
+    type=float,
+    default=1e-2,
+    help="Diagonal shift applied to the FIM or NTK before computing its pseudoinverse. Default is 1e-2.",
+)
+parser.add_argument(
     "--sr_method",
     type=str,
     default=None,
     help="Method for the natural gradients. 'SR' to use standard SR, 'minSR' to use minSR or 'auto' to automatically chose the most convenient one depending on the other settings. Default is None, which uses the auto method.",
-)
-parser.add_argument(
-    "--sr_diagonal_shift",
-    type=float,
-    default=1e-4,
-    help="Diagonal shift applied to the FIM or NTK before computing its pseudoinverse. Default is 1e-4.",
 )
 
 # Variational quantum state settings
 parser.add_argument(
     "--dbqs_num_hidden_layers",
     type=int,
-    default=1,
-    help="Number of hidden layers in the Deep Boltzmann Quantum State. Default is 1.",
+    default=2,
+    help="Number of hidden layers in the Deep Boltzmann Quantum State. Default is 2.",
 )
 parser.add_argument(
     "--dbqs_unit_density_per_layer",
@@ -196,8 +190,8 @@ parser.add_argument(
 parser.add_argument(
     "--mcmc_num_samples",
     type=int,
-    default=2**4,
-    help="Number of samples to generate to compute observables. Default is 16.",
+    default=2**7,
+    help="Number of samples to generate to compute observables. Default is 128.",
 )
 parser.add_argument(
     "--mcmc_num_chains",
@@ -214,14 +208,14 @@ parser.add_argument(
 parser.add_argument(
     "--mcmc_num_sweep_steps",
     type=int,
-    default=2**3,
-    help="Number of sweep steps to run for each chain. Default is 8.",
+    default=2**4,
+    help="Number of sweep steps to run for each chain. Default is 16.",
 )
 parser.add_argument(
-    "--mcmc_persistent_markov_chains",
+    "--mcmc_disable_persistent_markov_chains",
     action=argparse.BooleanOptionalAction,
-    default=True,
-    help="Whether to use persistent Markov chains. Default is True.",
+    default=False,
+    help="Disable persistent Markov chains. Default is False.",
 )
 
 args = parser.parse_args()
@@ -338,7 +332,7 @@ def main():
     local_energy_annealing = (
         lambda params, spins: vqs.local_energy_sigma_x(params, spins) * args.vqa_annealing_field_scale
     )
-    if args.vqa_use_catalyst:
+    if not args.vqa_no_catalyst:
         local_energy_catalyst = (
             lambda params, spins: vqs.local_energy_sigma_y(params, spins) * args.vqa_catalyst_field_scale
         )
@@ -362,17 +356,13 @@ def main():
         "target_energy": build_measurement_function(local_energy_target, return_best=is_classical_target),
         "annealing_energy": build_measurement_function(local_energy_annealing),
     }
-    if args.vqa_use_catalyst:
+    if not args.vqa_no_catalyst:
         observables_dict["catalyst_energy"] = build_measurement_function(local_energy_catalyst)
     # endregion
 
     optimizer = optax.sgd(args.sgd_learning_rate, momentum=args.sgd_momentum)
-    if args.vqa_no_annealing:
-        print("--vqa_no_annealing passed, running standard SR optimization.")
-        times = jnp.ones((args.vqa_num_annealing_steps,))
-    else:
-        times = jnp.linspace(0.0, 1.0, args.vqa_num_annealing_steps)
-    if args.vqa_use_catalyst:
+    times = jnp.linspace(0.0, 1.0, args.vqa_num_annealing_steps)
+    if not args.vqa_no_catalyst:
         schedule = jax.vmap(lambda t: jnp.array([t, 1 - t, t * (1 - t)]))(times)
     else:
         schedule = jax.vmap(lambda t: jnp.array([t, 1 - t]))(times)
@@ -382,7 +372,7 @@ def main():
         parametric_gradient_estimator=gradient_estimator,
         optimizer=optimizer,
         annealing_schedule=schedule,
-        persistent_chains=args.mcmc_persistent_markov_chains,
+        persistent_chains=not args.mcmc_disable_persistent_markov_chains,
         observables_dict=observables_dict,
         num_warmup_steps=args.vqa_num_warmup_steps,
         num_updates_per_step=args.vqa_num_updates_per_step,
