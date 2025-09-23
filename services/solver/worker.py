@@ -248,6 +248,7 @@ from utils.serialization import serialize_data
 # endregion
 
 
+
 def main():
     start_time = int(time.time())
     if args.prng_seed is None:
@@ -259,9 +260,21 @@ def main():
     if args.mcmc_num_chains is None:
         args.mcmc_num_chains = args.mcmc_num_samples
 
-    print("Args recap:")
+    def printf(*objects, sep=" ", end="\n"):
+        """Append messages to a log file under args.save_path/log.txt.
+
+        Creates the directory if needed. Mirrors print's basic signature for sep/end.
+        """
+        log_dir = args.save_path
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "log.txt")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(sep.join(str(o) for o in objects) + end)
+
+
+    printf("Args recap:")
     for arg_name, arg_value in vars(args).items():
-        print(f"{arg_name}: {arg_value}")
+        printf(f"{arg_name}: {arg_value}")
 
     os.makedirs(args.save_path, exist_ok=True)
     with open(args.save_path + f"/worker_args.pkl", "wb") as f:
@@ -387,7 +400,7 @@ def main():
 
     if data is None:
         # make a failed.txt file
-        print("Failed")
+        printf("Failed")
         os.makedirs(args.save_path, exist_ok=True)
         with open(f"{args.save_path}/failed.txt", "w") as f:
             f.write("Failed")
