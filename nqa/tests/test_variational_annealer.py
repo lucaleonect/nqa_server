@@ -191,7 +191,7 @@ def test_variational_annealer_early_stop_runtime_cap():
         log_params=False,
     )
 
-    out = va.run(_mk(15), max_runtime=1)  # effectively immediate cap
+    out = va.run(_mk(15), max_runtime=1e-12)  # effectively immediate cap
     assert out is None  # Early stopping returns None
 
 
