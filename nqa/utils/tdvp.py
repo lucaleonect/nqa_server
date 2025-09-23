@@ -209,7 +209,7 @@ def build_parametric_gradient_estimator(
             jnp.average(d_logpsi, axis=0)
         )
         S_matrix = S_matrix + diag_shift * jnp.eye(S_matrix.shape[0], dtype=dtype)
-        inv_S_matrix = jnp.linalg.pinv(S_matrix, rcond=p_inv_rcond)
+        inv_S_matrix = jnp.linalg.pinv(S_matrix, rtol=p_inv_rcond)
         Forces_array = jnp.average(
             (vmapd_multiply_by_scalar(local_energies, jnp.conjugate(d_logpsi))), axis=0
         ) - multiply_by_scalar(jnp.average(local_energies), jnp.average(jnp.conjugate(d_logpsi), axis=0))
