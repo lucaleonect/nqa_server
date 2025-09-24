@@ -276,6 +276,10 @@ def main():
     for arg_name, arg_value in vars(args).items():
         printf(f"{arg_name}: {arg_value}")
 
+    printf("Diagnostics:")
+    printf("JAX devices:", jax.devices())
+    printf(f"Using JAX backend: {jax.default_backend()}")
+
     os.makedirs(args.save_path, exist_ok=True)
     with open(args.save_path + f"/worker_args.pkl", "wb") as f:
         pickle.dump(args, f)
