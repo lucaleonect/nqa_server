@@ -268,7 +268,7 @@ def main():
     for arg_name, arg_value in vars(args).items():
         print_log(f"{arg_name}: {arg_value}")
 
-    print_log(f"Debug info\n")
+    print_log(f"\nDebug info:")
     print_log(f"JAX version: {jax.__version__}")
     print_log(f"JAX backend: {jax.default_backend()}")
     print_log(f"JAX devices: {jax.devices()}")
