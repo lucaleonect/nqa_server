@@ -1,0 +1,6 @@
+fastapi==0.117.1
+uvicorn[standard]==0.37.0
+SQLAlchemy==2.0.43
+psycopg2-binary==2.9.10
+python-multipart==0.0.20
+jinja2==1.2.0
