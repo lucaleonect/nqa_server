@@ -16,53 +16,32 @@ services:
     depends_on:
       - db
     environment:
-      DATABASE_URL: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       DATA_ROOT: /data
     volumes:
       - shared-data:/data
     ports:
       - "8000:8000"
 
-  spark-master:
-    image: bitnami/spark:4.0.0
-    environment:
-      - SPARK_MODE=master
-      - SPARK_NO_DAEMONIZE=true
-    ports:
-      - "8080:8080"
-      - "7077:7077"
-    volumes:
-      - shared-data:/data
-      - ./services/solver:/app/solver:ro
-
-  spark-gpu-worker-1:
-    build: ./services/spark-gpu-worker   # ⬅ build the GPU worker image here
-    environment:
-      SPARK_MASTER_URL: "spark://spark-master:7077"
-      NVIDIA_VISIBLE_DEVICES: "0"
-      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
-    volumes:
-      - shared-data:/data
-      - ./services/solver:/solver:ro
-    runtime: nvidia
-    gpus: all
-    depends_on:
-      - spark-master
-
   scheduler:
     build: ./services/scheduler
     depends_on:
       - db
-      - spark-master
-      - spark-gpu-worker-1
+      - solver
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
-      SPARK_MASTER_URL: "spark://spark-master:7077"
+      SOLVER_URL: "http://solver:8081"
+
+  solver:
+    build: ./services/solver
+    environment:
       DATA_ROOT: /data
+      NQA_WORKER_SCRIPT: /nqa/nqa/worker.py
+    gpus: all
     volumes:
       - shared-data:/data
-      - ./services/solver:/app/solver:ro
-      - ./services/scheduler/spark_job_gpu.py:/app/spark_job_gpu.py:ro
+    ports:
+      - "8081:8081"
 
 volumes:
   pgdata:

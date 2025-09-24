@@ -10,8 +10,8 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--cuda_device",
     type=str,
-    default="0",
-    help="CUDA device to use, e.g. '0' for the first GPU, '1' for the second, etc.",
+    default=None,
+    help="CUDA device to use, e.g. '0' for the first GPU, '1' for the second, etc. If None, '0' will be used by default.",
 )
 parser.add_argument(
     "--max_runtime",
@@ -180,7 +180,7 @@ parser.add_argument(
     help="Data type for the parameters of the Deep Boltzmann Quantum State. Accepted values are 'float' and 'complex'. Default is 'complex'.",
 )
 parser.add_argument(
-    "--dbqs_use_bias",
+    "dbqs_use_bias",
     action=argparse.BooleanOptionalAction,
     default=True,
     help="Whether to use bias terms in the Deep Boltzmann Quantum State. Default is True.",
@@ -248,7 +248,6 @@ from utils.serialization import serialize_data
 # endregion
 
 
-
 def main():
     start_time = int(time.time())
     if args.prng_seed is None:
@@ -260,25 +259,19 @@ def main():
     if args.mcmc_num_chains is None:
         args.mcmc_num_chains = args.mcmc_num_samples
 
-    def printf(*objects, sep=" ", end="\n"):
-        """Append messages to a log file under args.save_path/log.txt.
+    def print_log(msg: str):
+        # print_log on log.txt (append if exists)
+        with open("log.txt", "a") as f:
+            f.write(f"{msg}\n")
 
-        Creates the directory if needed. Mirrors print's basic signature for sep/end.
-        """
-        log_dir = args.save_path
-        os.makedirs(log_dir, exist_ok=True)
-        log_path = os.path.join(log_dir, "log.txt")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(sep.join(str(o) for o in objects) + end)
-
-
-    printf("Args recap:")
+    print_log("Args recap:")
     for arg_name, arg_value in vars(args).items():
-        printf(f"{arg_name}: {arg_value}")
+        print_log(f"{arg_name}: {arg_value}")
 
-    printf("Diagnostics:")
-    printf("JAX devices:", jax.devices())
-    printf(f"Using JAX backend: {jax.default_backend()}")
+    print_log(f"Debug info\n")
+    print_log(f"JAX version: {jax.__version__}")
+    print_log(f"JAX backend: {jax.default_backend()}")
+    print_log(f"JAX devices: {jax.devices()}")
 
     os.makedirs(args.save_path, exist_ok=True)
     with open(args.save_path + f"/worker_args.pkl", "wb") as f:
@@ -404,7 +397,7 @@ def main():
 
     if data is None:
         # make a failed.txt file
-        printf("Failed")
+        print_log("Failed")
         os.makedirs(args.save_path, exist_ok=True)
         with open(f"{args.save_path}/failed.txt", "w") as f:
             f.write("Failed")

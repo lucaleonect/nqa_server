@@ -115,7 +115,7 @@ def objective(trial):
     out_data = np.load(f"{annealer_args['save_path']}/data.npz")
     obj_vaue = out_data["target_energy"][-1, 0]
     print(
-        f'Trial {trial.number} completed. Objective values: {obj_vaue:.2f}, {out_data["target_energy"][-1, 0]:.2f}, {out_data["best_energy_so_far"][-1]:.2f}, {out_data["runtime"]}'
+        f"Trial {trial.number} completed. Objective values: {obj_vaue:.2f}, {out_data["target_energy"][-1, 0]:.2f}, {out_data["best_energy_so_far"][-1]:.2f}, {out_data["runtime"]}"
     )
 
     trial.set_user_attr("Final Energy", out_data["target_energy"][-1, 0])
