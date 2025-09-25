@@ -7,10 +7,10 @@ This server is designed to run on a machine with a single GPU and be easily depl
 ## High-Level Architecture
 
 ```
-┌────────┐       job              ┌──────────┐        job metadata        ┌──────────┐
-│  User  │ ────────────────────▶ │   API    │ ────────────────────────▶ │ Postgres │
-└────────┘ ◀──────────────────── │ (FastAPI)│                            └──────────┘
-              results             └────┬─────┘                              ▲     ▲
+┌────────┐       job              ┌──────────┐        job data            ┌──────────┐
+│  User  │ ────────────────────▶ │   API    │ ◀───────────────────────▶│ Postgres │
+│        │◀────────────────────  │ (FastAPI)│                            └──────────┘
+└────────┘     results            └────┬─────┘                              ▲     ▲
                                        │                                    │     │
                                        │                                    │     │
                                        │                                    │     │
