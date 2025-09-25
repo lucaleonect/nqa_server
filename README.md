@@ -23,7 +23,7 @@ This server is designed to run on a machine with a single GPU and be easily depl
                             │      Solver         │             results           │            
                             │ (FastAPI + JAX NQA) │───────────────────────────────┘
                             └─────────────────────┘
-```HTTP / UI
+```
 
 - **API (`services/api`)**: FastAPI application with an HTML form for uploads, REST endpoints for job management, and result packaging. All user interactions—both submissions and downloads—flow through this service.
 - **Scheduler (`services/scheduler`)**: Background worker that polls PostgreSQL for `QUEUED` jobs, flips them to `RUNNING`, and asks the solver to execute them.
