@@ -1,5 +1,4 @@
 FROM bitnami/spark:3.5
-USER root
 WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt

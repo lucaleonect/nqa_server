@@ -2,30 +2,30 @@
 
 This repository packages a Neural Quantum Annealing (NQA) workflow into a set of containerised services.  It accepts Sherrington–Kirkpatrick style Ising instances (`J`, optional `h`/`g` vectors), schedules them through a GPU-enabled solver, and exposes a web/API surface for submitting jobs and downloading results.  All runtime state (inputs, results, metadata) is persisted inside Docker volumes so the whole system can be launched with a single `docker compose up`.
 
-This server is design to run on a machine with a single GPU and be easily deployable.
+This server is designed to run on a machine with a single GPU and be easily deployable.
 
 ## High-Level Architecture
 
 ```
-┌────────┐      upload/query      ┌──────────┐        job metadata        ┌──────────┐
+┌────────┐       job              ┌──────────┐        job metadata        ┌──────────┐
 │  User  │ ────────────────────▶ │   API    │ ────────────────────────▶ │ Postgres │
-└────────┘      HTTP / UI         │ (FastAPI)│        SQLAlchemy          └──────────┘
-     ▲                            └────┬─────┘                              ▲
-     │                                 │                                    │
-     │                      shared job/result volume                        │
-     │                                 │                                    │
-     │                      ┌──────────▼──────────┐         status updates  │
-     │                      │     Scheduler       │◀───────────────────────┘
-     │                      │  (polling worker)   │
-     │                      └──────────┬──────────┘
-     │                                 │ POST /run
-     │                      ┌──────────▼──────────┐
-     └───────────────────── │      Solver         │
-            results         │ (FastAPI + JAX NQA) │
+└────────┘ ◀──────────────────── │ (FastAPI)│                            └──────────┘
+              results             └────┬─────┘                              ▲     ▲
+                                       │                                    │     │
+                                       │                                    │     │
+                                       │                                    │     │
+                            ┌──────────▼──────────┐         status updates  │     │
+                            │     Scheduler       │◀───────────────────────┘     │
+                            │  (polling worker)   │                               │
+                            └──────────┬──────────┘                               │
+                                       │ POST /run                                │
+                            ┌──────────▼──────────┐                               │
+                            │      Solver         │             results           │            
+                            │ (FastAPI + JAX NQA) │───────────────────────────────┘
                             └─────────────────────┘
-```
+```HTTP / UI
 
-- **API (`services/api`)**: FastAPI application with an HTML form for uploads, REST endpoints for job management, and result packaging.
+- **API (`services/api`)**: FastAPI application with an HTML form for uploads, REST endpoints for job management, and result packaging. All user interactions—both submissions and downloads—flow through this service.
 - **Scheduler (`services/scheduler`)**: Background worker that polls PostgreSQL for `QUEUED` jobs, flips them to `RUNNING`, and asks the solver to execute them.
 - **Solver (`services/solver`)**: GPU-ready FastAPI service that shells into the JAX-based annealer (`nqa/worker.py`), writes artefacts to `/data/results/<job_id>`, and streams truncated logs back to the scheduler.
 - **PostgreSQL (`db`)**: Tracks job metadata and error messages.
@@ -171,4 +171,3 @@ When defining `--save_path` in custom CLI parameters, ensure it remains inside `
 - `docs/solver.md` — solver container layout, execution pipeline, and CUDA considerations.
 
 Contributions and suggestions are welcome—open an issue or submit a PR with proposed changes.
-
