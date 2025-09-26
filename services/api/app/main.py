@@ -1,49 +1,24 @@
 import json
 import os
 import shutil
-from typing import Any, Dict, Optional
-
-from fastapi import FastAPI, UploadFile, File, Request
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
-from .db import Base, engine, SessionLocal
-from .models import Job, JobStatus
-from zipfile import ZipFile
 import tempfile
 import uuid
+from typing import Dict, Optional, Sequence, cast
+
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from zipfile import ZipFile
+
+from .db import Base, SessionLocal, engine
+from .models import Job, JobStatus
+
 
 DATA_ROOT = os.environ.get("DATA_ROOT", "/data")
 UPLOAD_ROOT = os.path.join(DATA_ROOT, "jobs")
-RESULT_ROOT = os.path.join(DATA_ROOT, "results")
+STUDY_ROOT = os.path.join(DATA_ROOT, "studies")
+REQUEST_FILENAME = "study_request.json"
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
-os.makedirs(RESULT_ROOT, exist_ok=True)
-
-
-CLI_ARGUMENT_DEFINITIONS: Dict[str, Dict[str, Any]] = {
-    "prng_seed": {"type": "int", "default": None},
-    "h_value": {"type": "float", "default": None},
-    "g_value": {"type": "float", "default": None},
-    "energy_shift": {"type": "float", "default": 0.0},
-    "vqa_num_annealing_steps": {"type": "int", "default": 10000},
-    "vqa_num_warmup_steps": {"type": "int", "default": 1},
-    "vqa_num_updates_per_step": {"type": "int", "default": 1},
-    "vqa_num_finetuning_steps": {"type": "int", "default": 100},
-    "vqa_annealing_field_scale": {"type": "float", "default": 1.0},
-    "vqa_catalyst_field_scale": {"type": "float", "default": 1.0},
-    "vqa_no_catalyst": {"type": "bool", "default": False},
-    "sgd_learning_rate": {"type": "float", "default": 0.1},
-    "sgd_momentum": {"type": "float", "default": 0.5},
-    "sr_prefactor": {"type": "complex", "default": "1.0+0.0j"},
-    "sr_diagonal_shift": {"type": "float", "default": 0.01},
-    "dbqs_num_hidden_layers": {"type": "int", "default": 2},
-    "dbqs_unit_density_per_layer": {"type": "float", "default": 1.0},
-    "dbqs_param_dtype": {"type": "toggle", "default": "complex", "alt": "float"},
-    "dbqs_use_bias": {"type": "bool", "default": True},
-    "mcmc_num_samples": {"type": "int", "default": 2**7},
-    "mcmc_num_chains": {"type": "int", "default": None},
-    "mcmc_num_thermalization_steps": {"type": "int", "default": 2**7},
-    "mcmc_num_sweep_steps": {"type": "int", "default": 2**4},
-    "mcmc_disable_persistent_markov_chains": {"type": "bool", "default": False},
-}
+os.makedirs(STUDY_ROOT, exist_ok=True)
 
 
 app = FastAPI(title="nqa-server")
@@ -63,22 +38,53 @@ def get_db():
         db.close()
 
 
+def _read_study_request(job_id: str) -> Dict[str, object]:
+    path = os.path.join(UPLOAD_ROOT, job_id, REQUEST_FILENAME)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     with open(os.path.join(os.path.dirname(__file__), "templates", "index.html"), "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
 
 
+def _coerce_upload(value: Optional[UploadFile | Sequence[UploadFile]]) -> Optional[UploadFile]:
+    """Return the first actual upload object or None when the field was absent."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, Sequence) and not isinstance(value, (UploadFile, bytes, str)):
+        for item in value:
+            coerced = _coerce_upload(item)  # type: ignore[arg-type]
+            if coerced is not None:
+                return coerced
+        return None
+
+    if isinstance(value, UploadFile):
+        return value
+
+    if hasattr(value, "filename") and hasattr(value, "file"):
+        return cast(UploadFile, value)
+
+    return None
+
+
 @app.post("/upload")
 async def upload(
-    request: Request,
     file: UploadFile = File(...),
-    h_vector: Any = File(None),
-    g_vector: Any = File(None),
+    h_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
+    g_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
 ):
-    # Normalize optional files: treat non-UploadFile values (e.g., empty strings) as absent
-    h_vector = h_vector if isinstance(h_vector, UploadFile) else None
-    g_vector = g_vector if isinstance(g_vector, UploadFile) else None
+    # Normalise optional inputs that may arrive as lists or other sentinel values
+    h_vector = _coerce_upload(h_vector)
+    g_vector = _coerce_upload(g_vector)
     if not file.filename.endswith(".npy"):
         return JSONResponse({"error": "Only .npy files accepted"}, status_code=400)
 
@@ -88,69 +94,14 @@ async def upload(
         if not optional_file.filename.endswith(".npy"):
             return JSONResponse({"error": f"{field_name} must be a .npy file"}, status_code=400)
 
-    form = await request.form()
-
-    cli_args = {}
-    for arg_name, meta in CLI_ARGUMENT_DEFINITIONS.items():
-        arg_type = meta["type"]
-        if arg_type == "bool":
-            values = form.getlist(arg_name)
-            if not values:
-                continue
-            default_value = bool(meta.get("default", False))
-            cli_args[arg_name] = not default_value
-            continue
-        if arg_type == "toggle":
-            values = form.getlist(arg_name)
-            if not values:
-                continue
-            alt_value = meta.get("alt")
-            if alt_value is None:
-                continue
-            cli_args[arg_name] = alt_value
-            continue
-
-        raw_value = form.get(arg_name)
-        if raw_value is None:
-            continue
-        value_str = str(raw_value).strip()
-        if value_str == "":
-            continue
-        try:
-            if arg_type == "int":
-                cli_args[arg_name] = int(value_str)
-            elif arg_type == "float":
-                cli_args[arg_name] = float(value_str)
-            elif arg_type == "complex":
-                complex(value_str)
-                cli_args[arg_name] = value_str
-            else:
-                cli_args[arg_name] = value_str
-        except ValueError:
-            return JSONResponse({"error": f"{arg_name} must be a valid {arg_type}"}, status_code=400)
-
-    if cli_args.get("dbqs_param_dtype") == "float" and not cli_args.get("vqa_no_catalyst", False):
-        return JSONResponse(
-            {"error": "When using float parameter dtype, the catalyst must be disabled."},
-            status_code=400,
-        )
-
-    if h_vector is not None and "h_value" in cli_args:
-        return JSONResponse(
-            {"error": "Provide either h_vector file or h_value, not both"},
-            status_code=400,
-        )
-    if g_vector is not None and "g_value" in cli_args:
-        return JSONResponse(
-            {"error": "Provide either g_vector file or g_value, not both"},
-            status_code=400,
-        )
-
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(UPLOAD_ROOT, job_id)
-    res_dir = os.path.join(RESULT_ROOT, job_id)
     os.makedirs(job_dir, exist_ok=True)
-    os.makedirs(res_dir, exist_ok=True)
+
+    # All studies default to the job identifier and fixed Optuna settings.
+    study_name = job_id
+    study_dir = os.path.join(STUDY_ROOT, study_name)
+    os.makedirs(study_dir, exist_ok=True)
 
     dest = os.path.join(job_dir, "J.npy")
     try:
@@ -172,30 +123,17 @@ async def upload(
     except Exception as e:
         return JSONResponse({"error": f"failed to save vector file: {e}"}, status_code=500)
 
-    if cli_args:
-        default_marker = object()
-        sample_value = cli_args.get(
-            "mcmc_num_samples", CLI_ARGUMENT_DEFINITIONS["mcmc_num_samples"]["default"]
-        )
-        filtered_args: Dict[str, Any] = {}
-        for arg_name, value in cli_args.items():
-            meta = CLI_ARGUMENT_DEFINITIONS.get(arg_name, {})
-            default_value = meta.get("default", default_marker)
-            if default_value is not default_marker and value == default_value:
-                continue
-            filtered_args[arg_name] = value
+    study_payload: Dict[str, object] = {
+        "study_name": study_name,
+    }
 
-        if "mcmc_num_chains" in filtered_args and filtered_args["mcmc_num_chains"] == sample_value:
-            del filtered_args["mcmc_num_chains"]
+    try:
+        with open(os.path.join(job_dir, REQUEST_FILENAME), "w", encoding="utf-8") as f:
+            json.dump(study_payload, f)
+    except Exception as e:
+        return JSONResponse({"error": f"failed to save study request: {e}"}, status_code=500)
 
-        if filtered_args:
-            try:
-                with open(os.path.join(job_dir, "cli_args.json"), "w", encoding="utf-8") as f:
-                    json.dump({k: filtered_args[k] for k in sorted(filtered_args)}, f)
-            except Exception as e:
-                return JSONResponse({"error": f"failed to save argument file: {e}"}, status_code=500)
-
-    job = Job(id=job_id, filename=file.filename, status=JobStatus.QUEUED, result_dir=res_dir)
+    job = Job(id=job_id, filename=file.filename, status=JobStatus.QUEUED, result_dir=study_dir)
     with SessionLocal() as db:
         db.add(job)
         db.commit()
@@ -213,6 +151,7 @@ def list_jobs():
                 "id": j.id,
                 "status": j.status.value,
                 "filename": j.filename,
+                "study_name": _read_study_request(j.id).get("study_name"),
                 "created_at": j.created_at.isoformat() + "Z",
                 "updated_at": j.updated_at.isoformat() + "Z",
                 "error": j.error,
@@ -227,10 +166,12 @@ def job_status(job_id: str):
         j = db.get(Job, job_id)
         if not j:
             return JSONResponse({"error": "not found"}, status_code=404)
+        request_meta = _read_study_request(job_id)
         return {
             "id": j.id,
             "status": j.status.value,
             "filename": j.filename,
+            "study_name": request_meta.get("study_name"),
             "created_at": j.created_at.isoformat() + "Z",
             "updated_at": j.updated_at.isoformat() + "Z",
             "error": j.error,

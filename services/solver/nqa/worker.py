@@ -16,7 +16,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_runtime",
     type=int,
-    default=60 * 60,
+    default=6 * 60 * 60,
     help="Maximum runtime in seconds. After 10%% of the maximum runtime, the program will estimate the remaining runtime and halt if it exceeds the maximum runtime. Default is 6 hours (21600 seconds).",
 )
 parser.add_argument(
@@ -34,7 +34,7 @@ parser.add_argument(
 parser.add_argument(
     "--tqdm",
     action=argparse.BooleanOptionalAction,
-    default=True,
+    default=False,
     help="Use tqdm to show progress bars.",
 )
 
@@ -180,7 +180,7 @@ parser.add_argument(
     help="Data type for the parameters of the Deep Boltzmann Quantum State. Accepted values are 'float' and 'complex'. Default is 'complex'.",
 )
 parser.add_argument(
-    "dbqs_use_bias",
+    "--dbqs_use_bias",
     action=argparse.BooleanOptionalAction,
     default=True,
     help="Whether to use bias terms in the Deep Boltzmann Quantum State. Default is True.",
@@ -255,7 +255,7 @@ def main():
     if args.save_path is None:
         args.save_path = f"./data_{start_time}"
     if args.target_energy is None:
-        args.target_energy = jnp.inf
+        args.target_energy = float("inf")
     if args.mcmc_num_chains is None:
         args.mcmc_num_chains = args.mcmc_num_samples
 

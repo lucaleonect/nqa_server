@@ -12,10 +12,10 @@ parser.add_argument("--h_vector_path", type=str, default=None)
 parser.add_argument("--g_vector_path", type=str, default=None)
 parser.add_argument("--db_storage_path", type=str, default=None)
 parser.add_argument("--study_name", type=str, default=None)
-parser.add_argument("--num_trials", type=int, default=1)
+parser.add_argument("--num_trials", type=int, default=100)
 parser.add_argument("--num_workers", type=int, default=1)
 parser.add_argument("--cuda_device", type=int, default=0)
-parser.add_argument("--trial_max_runtime", type=int, default=60 * 10)
+parser.add_argument("--trial_max_runtime", type=int, default=60 * 30)
 args = parser.parse_args()
 
 if args.J_matrix_path is None:
@@ -39,7 +39,6 @@ default_args = {
     "max_runtime": args.trial_max_runtime,
     "J_matrix_path": args.J_matrix_path,
     "vqa_num_warmup_steps": 10,
-    "vqa_num_updates_per_step": 1,
     "vqa_num_finetuning_steps": 100,
     "dbqs_param_dtype": "complex",
     "mcmc_num_thermalization_steps": 2**7,
@@ -49,7 +48,8 @@ if args.h_vector_path is not None:
 if args.g_vector_path is not None:
     default_args["g_vector_path"] = args.g_vector_path
 trial_args_settings = {
-    "vqa_num_annealing_steps": ("int", 1e3, 1e4, "log"),
+    "vqa_num_annealing_steps": ("int", 1e3, 1e6, "log"),
+    "vqa_num_updates_per_step": ("int", 1, 5, "linear"),
     "vqa_annealing_field_scale": ("float", 1e-1, 1e1, "log"),
     "vqa_catalyst_field_scale": ("float", 1e-1, 1e1, "log"),
     "sgd_learning_rate": ("float", 1e-4, 1e0, "log"),

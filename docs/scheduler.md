@@ -7,7 +7,8 @@ The scheduler is a lightweight polling worker that bridges the database and the 
 
 - Poll the `jobs` table for the oldest `QUEUED` entry.
 - Atomically transition a job to `RUNNING` prior to execution.
-- Invoke the solver service (`POST /run`) with the job identifier.
+- Materialise the solver payload by loading `J.npy`, optional vectors, and `study_request.json` from `/data/jobs/<job_id>/`.
+- Invoke the solver service (`POST /run`) with the fully expanded Optuna request.
 - Handle HTTP/network failures and solver-side errors, downgrading jobs to `FAILED` with diagnostic text.
 - Retry the polling loop indefinitely, backing off slightly when the queue is empty.
 
@@ -17,7 +18,7 @@ The scheduler is a lightweight polling worker that bridges the database and the 
 - **Dockerfile**: `services/scheduler/Dockerfile`
 - **Base**: `bitnami/spark:3.5` (currently used only for its Python + Spark environment; Spark execution is legacy).
 - **Runtime command**: `python3 -m app.main`
-- **Dependencies installed**: `psycopg2-binary`, `SQLAlchemy`, `requests`
+- **Dependencies installed**: `psycopg2-binary`, `SQLAlchemy`, `requests`, `numpy`
 
 > The historical Spark-based executor (`app/spark_job.py`) is still present for archival purposes but is not imported or executed by the current scheduler.
 
@@ -29,6 +30,7 @@ The scheduler is a lightweight polling worker that bridges the database and the 
 | `DATABASE_URL` | ✔ | _none_ | Connection string to the PostgreSQL instance. |
 | `SOLVER_URL` | ✖ | `http://solver:8081` | Base URL of the solver service. Override when running the solver on a different host/port. |
 | `SOLVER_TIMEOUT` | ✖ | unset | Float (seconds). If provided, passed to `requests.post(..., timeout=...)` to limit solver execution time. |
+| `DATA_ROOT` | ✖ | `/data` | Shared volume containing `jobs/` (inputs) and `studies/` (outputs). |
 
 
 ## Polling Loop
@@ -38,7 +40,7 @@ The scheduler is a lightweight polling worker that bridges the database and the 
 1. `SELECT_NEXT` retrieves the oldest queued job (`ORDER BY created_at ASC LIMIT 1`).
 2. If no job is found, the caller sleeps for four seconds; otherwise the loop continues immediately after the solver call.
 3. Before contacting the solver, `MARK_RUNNING` sets the status to `RUNNING` and commits the transaction. This prevents duplicate scheduling when multiple worker instances run concurrently.
-4. The solver endpoint is called with `requests.post`. The payload is a JSON object containing only the `job_id`.
+4. The solver endpoint is called with `requests.post`. The payload contains the coupling matrix, optional vectors, study metadata, and CUDA preference required by `nqa/master.py`.
 5. Responses are interpreted as follows:
    - `response.ok == True`: the job is marked `DONE`, the raw response body is logged (truncated to 500 characters), and the loop proceeds.
    - Non-200 responses: the body is parsed (JSON preferred) via `_parse_solver_response()` to extract meaningful details. The job is marked `FAILED` with an error message truncated to 8 KB.
@@ -57,7 +59,7 @@ The outer `while True` handles database connectivity issues by sleeping four sec
 ## Interaction with the Solver
 
 - Endpoint constructed from `SOLVER_URL.rstrip('/') + '/run'`.
-- Request payload: `{ "job_id": <uuid str> }`.
+- Request payload: JSON document with keys `J_matrix`, optional `h_vector`/`g_vector`, and the study metadata recorded by the API (`study_name`, optional `cuda_device`). Per-study hyperparameters such as Optuna trial counts come from the solver defaults.
 - Timeout: `SOLVER_TIMEOUT` if provided; otherwise the request may block until the solver responds.
 - Successful responses are logged verbatim (limited to 500 characters) to aid debugging and to capture solver stdout/stderr tails.
 - Errors are serialised to strings before being written to the database. When the solver returns a JSON object with `detail`/`error`/`stdout`/`stderr` keys, the scheduler normalises the text into a compact message.
@@ -72,11 +74,12 @@ The outer `while True` handles database connectivity issues by sleeping four sec
 
 ## Running Locally
 
-1. Install dependencies: `pip install psycopg2-binary SQLAlchemy requests`.
+1. Install dependencies: `pip install psycopg2-binary SQLAlchemy requests numpy`.
 2. Set environment variables, e.g.:
    ```bash
    export DATABASE_URL=postgresql://nqa:nqa_password@localhost:5432/nqa
    export SOLVER_URL=http://localhost:8081
+   export DATA_ROOT=/path/to/shared-data
    ```
 3. Launch with `python -m app.main` inside `services/scheduler`.
 
@@ -94,5 +97,4 @@ Ensure a solver instance is reachable before starting the scheduler; otherwise e
 
 - **Retry semantics**: For long-running jobs you can layer exponential back-off or more granular status tracking (e.g., storing solver response codes).
 - **Parallelism**: The existing logic is safe for horizontal scaling—multiple scheduler instances can run concurrently as long as they share the same database.
-- **Spark integration**: If you plan to revive Spark-based execution, refer to `app/spark_job.py` for the previous approach (submitting `spark-submit` jobs that dispatch `nqa/worker.py` on executors).
-
+- **Spark integration**: If you plan to revive Spark-based execution, refer to `app/spark_job.py` for the previous approach (submitting `spark-submit` jobs that dispatched `nqa/worker.py`). That script will need updates to mirror the new `nqa/master.py` payload contract.

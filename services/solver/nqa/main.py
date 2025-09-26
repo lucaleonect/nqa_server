@@ -1,25 +1,39 @@
-import json
 import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Optional
+from uuid import uuid4
 
+import numpy as np
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 
 app = FastAPI(title="nqa-solver")
 
 
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", "/data")).resolve()
-WORKER_SCRIPT = Path(os.environ.get("NQA_WORKER_SCRIPT", "/nqa/nqa/worker.py")).resolve()
+DATA_ROOT.mkdir(parents=True, exist_ok=True)
+MASTER_SCRIPT = Path(os.environ.get("NQA_MASTER_SCRIPT", "/nqa/nqa/master.py")).resolve()
 PYTHON_BIN = os.environ.get("NQA_PYTHON_BIN") or sys.executable
 DEFAULT_CUDA_DEVICE = os.environ.get("NQA_DEFAULT_CUDA_DEVICE")
+MASTER_ROOT = MASTER_SCRIPT.parent
+MASTER_STUDIES_ROOT = (MASTER_ROOT / "studies").resolve()
 
 
-class JobRequest(BaseModel):
-    job_id: str
+class StudyRequest(BaseModel):
+    J_matrix: List[List[float]] = Field(..., description="Square coupling matrix")
+    h_vector: Optional[List[float]] = Field(None, description="Optional longitudinal field")
+    g_vector: Optional[List[float]] = Field(None, description="Optional transverse field")
+    study_name: Optional[str] = Field(None, description="Custom identifier for the Optuna study")
+    cuda_device: Optional[int] = Field(None, description="Override CUDA device index")
+
+    @model_validator(mode="after")
+    def _vectors_need_square_matrix(cls, model):
+        if not model.J_matrix:
+            raise ValueError("J_matrix must not be empty")
+        return model
 
 
 def _truncate(text: str, limit: int = 4000) -> str:
@@ -31,86 +45,110 @@ def _truncate(text: str, limit: int = 4000) -> str:
     return text[-limit:]
 
 
-def _validate_paths(job_id: str) -> Tuple[Path, Path, Path]:
-    job_dir = (DATA_ROOT / "jobs" / job_id).resolve()
-    result_dir = (DATA_ROOT / "results" / job_id).resolve()
-    j_matrix_path = job_dir / "J.npy"
-
-    if DATA_ROOT not in job_dir.parents:
-        raise HTTPException(status_code=400, detail="job dir outside data root")
-    if not j_matrix_path.exists():
-        raise HTTPException(status_code=404, detail="J.npy not found for job")
-    result_dir.mkdir(parents=True, exist_ok=True)
-    return job_dir, result_dir, j_matrix_path
+def _ensure_square_matrix(payload: List[List[float]]) -> np.ndarray:
+    array = np.asarray(payload, dtype=np.float64)
+    if array.ndim != 2 or array.shape[0] != array.shape[1]:
+        raise HTTPException(status_code=400, detail="J_matrix must be a square 2D array")
+    return array
 
 
-def _load_cli_args(args_path: Path) -> Dict[str, object]:
-    try:
-        with args_path.open("r", encoding="utf-8") as fh:
-            raw = json.load(fh)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"invalid cli args json: {exc}") from exc
-    except FileNotFoundError:
-        return {}
-    if not isinstance(raw, dict):
-        raise HTTPException(status_code=400, detail="cli args file must contain an object")
-    return raw
+def _ensure_vector(payload: Optional[List[float]], size: int, name: str) -> Optional[np.ndarray]:
+    if payload is None:
+        return None
+    array = np.asarray(payload, dtype=np.float64)
+    if array.ndim != 1 or array.shape[0] != size:
+        raise HTTPException(status_code=400, detail=f"{name} must be a 1D array of length {size}")
+    return array
 
 
-def _build_command(job_id: str) -> Tuple[List[str], Path]:
-    job_dir, result_dir, j_matrix_path = _validate_paths(job_id)
-    if not WORKER_SCRIPT.exists():
-        raise HTTPException(status_code=500, detail="worker script not found inside solver image")
+def _sanitize_name(raw: Optional[str]) -> str:
+    if raw:
+        cleaned = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in raw.strip())
+        cleaned = cleaned.strip("._-")
+        if cleaned:
+            return cleaned
+    return f"study_{uuid4().hex}"
 
-    h_path = job_dir / "h_vector.npy"
-    g_path = job_dir / "g_vector.npy"
-    args_path = job_dir / "cli_args.json"
-    cli_args = _load_cli_args(args_path)
 
-    cmd: List[str] = [PYTHON_BIN, str(WORKER_SCRIPT), "--J_matrix_path", str(j_matrix_path)]
-    if h_path.exists():
+def _prepare_study_dir(study_id: str) -> Path:
+    study_dir = (DATA_ROOT / "studies" / study_id).resolve()
+    if DATA_ROOT not in study_dir.parents and study_dir != DATA_ROOT:
+        raise HTTPException(status_code=400, detail="study path escapes data root")
+    study_dir.mkdir(parents=True, exist_ok=True)
+    return study_dir
+
+
+def _persist_inputs(study_dir: Path, j_matrix: np.ndarray, h_vector: Optional[np.ndarray], g_vector: Optional[np.ndarray]):
+    inputs_dir = study_dir / "inputs"
+    inputs_dir.mkdir(parents=True, exist_ok=True)
+    j_path = inputs_dir / "J.npy"
+    np.save(j_path, j_matrix)
+    h_path = None
+    g_path = None
+    if h_vector is not None:
+        h_path = inputs_dir / "h_vector.npy"
+        np.save(h_path, h_vector)
+    if g_vector is not None:
+        g_path = inputs_dir / "g_vector.npy"
+        np.save(g_path, g_vector)
+    return j_path, h_path, g_path
+
+
+def _build_command(
+    study_dir: Path,
+    j_path: Path,
+    h_path: Optional[Path],
+    g_path: Optional[Path],
+    request: StudyRequest,
+) -> List[str]:
+    if not MASTER_SCRIPT.exists():
+        raise HTTPException(status_code=500, detail="master script not found inside solver image")
+
+    study_suffix = os.path.relpath(study_dir, MASTER_STUDIES_ROOT)
+    cmd: List[str] = [
+        PYTHON_BIN,
+        str(MASTER_SCRIPT),
+        "--J_matrix_path",
+        str(j_path),
+        "--study_name",
+        study_suffix,
+    ]
+
+    if h_path is not None:
         cmd.extend(["--h_vector_path", str(h_path)])
-    if g_path.exists():
+    if g_path is not None:
         cmd.extend(["--g_vector_path", str(g_path)])
 
-    has_save_path = False
-    has_cuda_device = False
-    for key, value in sorted(cli_args.items()):
-        if value is None:
-            continue
-        flag = f"--{key}"
-        if isinstance(value, bool):
-            cmd.append(flag if value else f"--no-{key}")
-            if key == "cuda_device" and value:
-                has_cuda_device = True
-            continue
-        cmd.extend([flag, str(value)])
-        if key == "save_path":
-            has_save_path = True
-        if key == "cuda_device":
-            has_cuda_device = True
+    cuda_device = request.cuda_device if request.cuda_device is not None else DEFAULT_CUDA_DEVICE
+    if cuda_device is not None:
+        cmd.extend(["--cuda_device", str(cuda_device)])
 
-    if not has_save_path:
-        cmd.extend(["--save_path", str(result_dir)])
-    if not has_cuda_device and DEFAULT_CUDA_DEVICE:
-        cmd.extend(["--cuda_device", DEFAULT_CUDA_DEVICE])
-
-    return cmd, result_dir
+    return cmd
 
 
 @app.post("/run")
-def run_job(request: JobRequest):
-    cmd, result_dir = _build_command(request.job_id)
+def run_study(request: StudyRequest):
+    j_matrix = _ensure_square_matrix(request.J_matrix)
+    size = j_matrix.shape[0]
+    h_vector = _ensure_vector(request.h_vector, size, "h_vector")
+    g_vector = _ensure_vector(request.g_vector, size, "g_vector")
+
+    study_id = _sanitize_name(request.study_name)
+    study_dir = _prepare_study_dir(study_id)
+    j_path, h_path, g_path = _persist_inputs(study_dir, j_matrix, h_vector, g_vector)
+    cmd = _build_command(study_dir, j_path, h_path, g_path, request)
+
     env = os.environ.copy()
     env.setdefault("DATA_ROOT", str(DATA_ROOT))
-    if DEFAULT_CUDA_DEVICE:
-        env.setdefault("CUDA_VISIBLE_DEVICES", DEFAULT_CUDA_DEVICE)
+    cuda_device = request.cuda_device if request.cuda_device is not None else DEFAULT_CUDA_DEVICE
+    if cuda_device is not None:
+        env.setdefault("CUDA_VISIBLE_DEVICES", str(cuda_device))
 
-    print(f"[solver] running job {request.job_id}: {' '.join(cmd)}", flush=True)
+    print(f"[solver] running study {study_id}: {' '.join(cmd)}", flush=True)
     try:
         result = subprocess.run(
             cmd,
-            cwd=result_dir,
+            cwd=str(MASTER_ROOT),
             capture_output=True,
             text=True,
             check=False,
@@ -132,10 +170,15 @@ def run_job(request: JobRequest):
             },
         )
 
-    return {"status": "ok", "stdout": stdout_tail, "stderr": stderr_tail}
+    return {
+        "status": "ok",
+        "stdout": stdout_tail,
+        "stderr": stderr_tail,
+        "study_id": study_id,
+        "study_path": str(study_dir),
+    }
 
 
 @app.get("/health")
 def health():
     return {"status": "ready"}
-

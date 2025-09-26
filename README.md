@@ -27,9 +27,9 @@ This server is designed to run on a machine with a single GPU and be easily depl
 
 - **API (`services/api`)**: FastAPI application with an HTML form for uploads, REST endpoints for job management, and result packaging. All user interactions—both submissions and downloads—flow through this service.
 - **Scheduler (`services/scheduler`)**: Background worker that polls PostgreSQL for `QUEUED` jobs, flips them to `RUNNING`, and asks the solver to execute them.
-- **Solver (`services/solver`)**: GPU-ready FastAPI service that shells into the JAX-based annealer (`nqa/worker.py`), writes artefacts to `/data/results/<job_id>`, and streams truncated logs back to the scheduler.
+- **Solver (`services/solver`)**: GPU-ready FastAPI service that shells into the JAX-based Optuna driver (`nqa/master.py`), writes study artefacts to `/data/studies/<id>`, and streams truncated logs back to the scheduler or API clients.
 - **PostgreSQL (`db`)**: Tracks job metadata and error messages.
-- **Shared Data Volume (`shared-data`)**: Mounted into API/Scheduler/Solver containers to exchange job inputs (`/data/jobs/…`) and outputs (`/data/results/…`).
+- **Shared Data Volume (`shared-data`)**: Mounted into API/Scheduler/Solver containers to exchange job inputs (`/data/jobs/…`) and Optuna studies (`/data/studies/…`).
 
 
 ## Repository Layout
@@ -79,11 +79,11 @@ The solver container is exposed on `http://localhost:8081`; the scheduler reache
 | Variable | Default | Used By | Purpose |
 |----------|---------|---------|---------|
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | see `.env` | db, api, scheduler | Database credentials. |
-| `DATA_ROOT` | `/data` | api, solver | Root of shared-data volume inside containers (`jobs/`, `results/`). |
+| `DATA_ROOT` | `/data` | api, solver, scheduler | Root of shared-data volume inside containers (`jobs/`, `studies/`). |
 | `SOLVER_URL` | `http://solver:8081` | scheduler | Base URL for the solver service. Override when running solver outside Compose. |
 | `SOLVER_TIMEOUT` | unset (no timeout) | scheduler | Optional float (seconds) to bound solver HTTP request duration. |
-| `NQA_WORKER_SCRIPT` | `/nqa/nqa/worker.py` | solver | Path to the annealer entrypoint inside the solver image. |
-| `NQA_PYTHON_BIN` | `<sys.executable>` | solver | Override interpreter used to run the worker (defaults to container Python). |
+| `NQA_MASTER_SCRIPT` | `/nqa/nqa/master.py` | solver | Path to the Optuna driver launched by the solver service. |
+| `NQA_PYTHON_BIN` | `<sys.executable>` | solver | Override interpreter used to run the Optuna driver (defaults to container Python). |
 | `NQA_DEFAULT_CUDA_DEVICE` | unset | solver | If defined, appended as `--cuda_device` and `CUDA_VISIBLE_DEVICES` when the job lacks explicit GPU selection. |
 
 > For a deeper dive into each service’s configuration knobs and API surface, see the files under `docs/`.
@@ -91,10 +91,10 @@ The solver container is exposed on `http://localhost:8081`; the scheduler reache
 
 ## Job Lifecycle
 
-1. **Submission**: Users upload a `J.npy` file (and optionally `h_vector.npy`, `g_vector.npy`, plus CLI arguments) via the HTML form or a direct `POST /upload` request.
+1. **Submission**: Users upload a `J.npy` file (optional `h_vector.npy`, `g_vector.npy`) through the HTML form or a direct `POST /upload` request. Optuna study settings use service defaults.
 2. **Persistence**: The API writes the payload to `/data/jobs/<job_id>/` and creates a `Job` row (`status=QUEUED`).
-3. **Scheduling**: The scheduler polls every few seconds, marks jobs `RUNNING`, and POSTs `{"job_id": "…"}` to the solver’s `/run` endpoint.
-4. **Execution**: The solver assembles a command for `nqa/worker.py`, ensures a result directory exists, executes it, and captures stdout/stderr tails.
+3. **Scheduling**: The scheduler polls every few seconds, marks jobs `RUNNING`, materialises the solver payload from `/data/jobs/<job_id>/`, and POSTs it to the solver’s `/run` endpoint.
+4. **Execution**: The solver assembles a command for `nqa/master.py`, ensures study inputs live under `/data/studies/<id>`, executes the Optuna run, and captures stdout/stderr tails.
 5. **Completion**: On success the scheduler updates the job to `DONE`; on error it records the (truncated) failure details in `jobs.error`.
 6. **Retrieval**: Users can query `GET /jobs`, `GET /jobs/{id}`, and download zipped results via `GET /jobs/{id}/download` once complete.
 
@@ -105,11 +105,11 @@ All endpoints live under the API service (`http://localhost:8000` by default).  
 
 | Method & Path | Description |
 |---------------|-------------|
-| `GET /` | HTML upload form with dynamic solver options. |
+| `GET /` | HTML upload form with matrix inputs (Optuna runs with default settings). |
 | `POST /upload` | Multipart submission. Returns `{"job_id": "…", "status": "QUEUED"}`. |
 | `GET /jobs` | List jobs (newest first). |
 | `GET /jobs/{job_id}` | Single job with timestamps and error message. |
-| `GET /jobs/{job_id}/download` | Zip download of `/data/results/<job_id>` (requires status `DONE`). |
+| `GET /jobs/{job_id}/download` | Zip download of `/data/studies/<study_name>` (requires status `DONE`). |
 
 The solver exposes `GET /health` and `POST /run` internally; details are in `docs/solver.md`.
 
@@ -125,15 +125,15 @@ The shared Docker volume is mounted at `/data` for application containers and co
  │        ├── J.npy
  │        ├── h_vector.npy          # optional
  │        ├── g_vector.npy          # optional
- │        └── cli_args.json         # optional solver arguments (non-defaults only)
- └── results
-     └── <job_id>
-          ├── results.txt
-          ├── data.npz
-          └── plots/
+ │        └── study_request.json    # Default Optuna options forwarded to the solver
+ └── studies
+    └── <study_name>
+          ├── optuna_db.db
+          ├── test_<trial>/
+          └── inputs/
 ```
 
-When defining `--save_path` in custom CLI parameters, ensure it remains inside `/data/results/<job_id>` so the ZIP download endpoint can locate the artefacts.
+Study names match the job ID, ensuring each run maps to a unique `/data/studies/<study_name>` directory that the download endpoint can locate without extra configuration.
 
 
 ## Operations & Monitoring
@@ -141,25 +141,25 @@ When defining `--save_path` in custom CLI parameters, ensure it remains inside `
 - **Logs**: Each service logs to stdout. Use `docker compose logs <service>` for inspection. The solver returns truncated stdout/stderr in its HTTP response; the scheduler logs both the response snippet and any error message saved to the database.
 - **Database access**: `docker compose exec db psql -U $POSTGRES_USER $POSTGRES_DB` gives a psql shell. The `jobs` table records the latest status/error.
 - **Health check**: `curl http://localhost:8081/health` verifies the solver service; API responds to `/` and `/jobs` even before jobs exist.
-- **Cleaning state**: `docker compose down -v` drops the PostgreSQL and shared-data volumes (irreversible). Alternatively delete directories inside `shared-data/` to reset inputs/results.
+- **Cleaning state**: `docker compose down -v` drops the PostgreSQL and shared-data volumes (irreversible). Alternatively delete directories inside `shared-data/` to reset uploaded inputs and accumulated studies.
 
 
 ## Development
 
 - **Running services individually**:
   - API: `uvicorn app.main:app --reload --port 8000` (set `DATABASE_URL` and `DATA_ROOT` first).
-  - Solver: `uvicorn app.main:app --reload --port 8081` (provide `DATA_ROOT`, `NQA_WORKER_SCRIPT`, and GPU access if needed).
+  - Solver: `uvicorn app.main:app --reload --port 8081` (provide `DATA_ROOT`, `NQA_MASTER_SCRIPT`, and GPU access if needed).
   - Scheduler: `python -m app.main` (requires DB connection and a reachable solver URL).
-- **Editing solver code**: The `nqa/` directory contains the JAX implementation, utilities, and tests. Keep modifications backwards compatible with `nqa/worker.py` CLI arguments.
+- **Editing solver code**: The `nqa/` directory contains the JAX implementation, utilities, and tests. Keep modifications compatible with `nqa/master.py` and the underlying `worker.py` CLI, since Optuna trials still spawn the worker subprocess internally.
 - **Local testing**: Inside `services/solver/nqa`, run `pytest -q`.  GPU tests assume CUDA availability; CPU-only runs may require setting `XLA_PYTHON_CLIENT_PREALLOCATE=false` or similar flags.
 - **Linting/formatting**: Not enforced by scripts in this repo; adopt `ruff`, `black`, etc., if you integrate into CI.
 
 
 ## Troubleshooting
 
-- **Solver exits with code >0**: The scheduler marks the job FAILED and stores truncated stderr text in `jobs.error`. Inspect `/data/results/<job_id>` for full logs. Check that CLI arguments are valid (e.g., float vs. complex strings).
+- **Solver exits with code >0**: The scheduler marks the job FAILED and stores truncated stderr text in `jobs.error`. Inspect `/data/studies/<study_name>` for full logs.
 - **GPU unavailable**: Make sure `nvidia-smi` works on the host and the Docker daemon is configured for GPU passthrough. Optionally set `NQA_DEFAULT_CUDA_DEVICE=0` so the solver explicitly binds to GPU 0.
-- **Upload rejected**: Only `.npy` files are accepted for matrices/vectors. The API ensures `h_vector`/`g_vector` aren’t combined with their scalar counterparts.
+- **Upload rejected**: Only `.npy` files are accepted for matrices/vectors. Study names are sanitised to `[A-Za-z0-9._-]`; leave the field blank to auto-generate one.
 - **Timeouts**: Set `SOLVER_TIMEOUT` to guard against long-running jobs; FAILED jobs can be resubmitted once parameters are tuned.
 - **Legacy Spark runner**: A Spark-based executor (`services/scheduler/app/spark_job.py`) remains in the tree for reference but is not used by the current Docker Compose stack.
 

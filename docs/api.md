@@ -6,9 +6,9 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 ## Responsibilities
 
 - Validate and store user uploads (`J.npy`, optional `h_vector.npy`, `g_vector.npy`).
-- Collect optional CLI parameters for the solver and persist non-default values to `cli_args.json`.
+- Persist lightweight solver metadata (`study_name`, optional CUDA override) to `study_request.json` alongside the matrix data.
 - Maintain job records (`QUEUED` → `RUNNING` → `DONE`/`FAILED`) in the `jobs` table.
-- Serve a minimal HTML dashboard (`/`) for manual interactions.
+- Serve a lightweight HTML dashboard (`/`) for manual interactions.
 - Package solver outputs into a ZIP archive on demand.
 
 
@@ -26,13 +26,13 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
 | `DATABASE_URL` | ✔ | _none_ | SQLAlchemy connection string to PostgreSQL (`postgresql+psycopg2://user:pass@host:5432/db`). |
-| `DATA_ROOT` | ✖ | `/data` | Mount point of the shared volume containing `jobs/` and `results/`. |
+| `DATA_ROOT` | ✖ | `/data` | Mount point of the shared volume containing `jobs/` and `studies/`. |
 
 
 ## Directory Usage
 
 - Input matrices are stored under `<DATA_ROOT>/jobs/<job_id>/`.
-- Result directories (created immediately to reserve the path) live under `<DATA_ROOT>/results/<job_id>/`.
+- Optuna study outputs land under `<DATA_ROOT>/studies/<study_name>/`. The API pre-creates the directory referenced by each job so downstream services can write into it safely.
 - The service creates directories on upload if they do not exist.
 
 
@@ -40,19 +40,18 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 
 | Method & Path | Description | Request | Response |
 |---------------|-------------|---------|----------|
-| `GET /` | HTML upload form rendered from `templates/index.html`. | – | HTML page with dynamic form elements for solver CLI options. |
-| `POST /upload` | Accepts a multipart upload containing the problem matrices and optional parameters. | Fields: `file` (required `.npy` for `J`), `h_vector`, `g_vector` (optional `.npy`), plus form fields matching `CLI_ARGUMENT_DEFINITIONS`. | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. |
+| `GET /` | HTML upload form rendered from `templates/index.html`. | – | HTML page with fields for matrix uploads; studies run with built-in Optuna defaults. |
+| `POST /upload` | Accepts a multipart upload containing the problem matrices. | Fields: `file` (required `.npy` for `J`), `h_vector`, `g_vector` (optional `.npy`). | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. |
 | `GET /jobs` | List jobs ordered by `created_at DESC`. | – | JSON array with `id`, `status`, `filename`, `created_at`, `updated_at`, `error`. Timestamps are ISO strings with `Z` suffix. |
 | `GET /jobs/{job_id}` | Retrieve one job. | – | Same payload as list entry, or `404` JSON `{ "error": "not found" }`. |
 | `GET /jobs/{job_id}/download` | Package solver results for a completed job. | – | On success (`status == DONE`), returns a ZIP file built on the fly containing files inside `<result_dir>`. Otherwise `400` with reason. |
 
 
-### CLI Argument Handling
+### Study Request Metadata
 
-- Definitions live in `CLI_ARGUMENT_DEFINITIONS` inside `app/main.py`.
-- Only non-default values are persisted to `cli_args.json` to keep the file minimal.
-- Boolean flags are toggled relative to their defaults (e.g., checking a checkbox flips the stored boolean).
-- For complex numbers, the value is stored as a string so that the solver can rehydrate it correctly.
+- Metadata is normalised and written to `<DATA_ROOT>/jobs/<job_id>/study_request.json`.
+- `study_name` values default to the job ID to guarantee uniqueness.
+- Additional solver hyperparameters currently rely on the defaults packaged with `nqa/master.py`; exposing them via the API would require future changes.
 
 
 ## Database Schema
@@ -66,7 +65,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 | `filename` | `VARCHAR` | Original filename of the upload. |
 | `created_at` | `TIMESTAMP` | Defaults to `datetime.utcnow`. |
 | `updated_at` | `TIMESTAMP` | Updated to `NOW()` by API on creation, scheduler on status changes. |
-| `result_dir` | `VARCHAR` | Absolute path inside `DATA_ROOT/results/<job_id>`. |
+| `result_dir` | `VARCHAR` | Absolute path inside `DATA_ROOT/studies/<study_name>`. |
 | `error` | `TEXT` | Optional human-readable error message set by the scheduler. |
 
 The database engine is created with `pool_pre_ping=True` to gracefully handle idle connections.
@@ -74,9 +73,9 @@ The database engine is created with `pool_pre_ping=True` to gracefully handle id
 
 ## Interactions with Other Services
 
-- Writes to the shared volume are consumed by the solver (`cli_args.json`, `J.npy`, optional vectors).
+- Writes to the shared volume are consumed by the solver (`study_request.json`, `J.npy`, optional vectors).
 - The scheduler relies on the `jobs` table populated here; it never creates jobs itself.
-- Result directories are seeded by the API so that the solver can immediately write files.
+- Study directories are seeded by the API so that the solver can immediately write files.
 
 
 ## Local Development & Testing
@@ -96,7 +95,5 @@ There are no automated tests dedicated to the API in this repository yet.  Consi
 ## Operational Notes
 
 - The upload endpoint rejects files that do not end in `.npy`; this guards against accidental CSV uploads.
-- When both a vector file and its scalar counterpart are provided (`h_vector` + `h_value`), the request fails with a clear error message.
 - Large files are streamed to disk using `shutil.copyfileobj`; the API does not keep them in memory.
 - ZIP downloads create a temporary file using `NamedTemporaryFile(delete=False)`; FastAPI handles cleanup when the response is closed.
-
