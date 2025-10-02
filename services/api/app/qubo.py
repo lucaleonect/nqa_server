@@ -1,3 +1,5 @@
+"""Utilities for converting QUBO instances into equivalent Ising formulations."""
+
 import numpy as np
 
 def are_close(num1, num2, tolerance=1e-10):

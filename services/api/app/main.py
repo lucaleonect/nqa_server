@@ -1,3 +1,5 @@
+"""FastAPI application exposing the Neural Quantum Annealing API service."""
+
 import inspect
 import io
 import json
@@ -48,6 +50,7 @@ logger = logging.getLogger(__name__)
 def _load_env_study_default(
     key: str, spec_kind: str, default: Union[int, float], minimum: Optional[float]
 ) -> Union[int, float]:
+    """Resolve a study argument default from the environment, falling back to code defaults."""
     env_key = f"HPO_DEFAULT_{key.upper()}"
     raw_value = os.environ.get(env_key)
     if raw_value is None or not str(raw_value).strip():
@@ -77,6 +80,7 @@ def _build_spec(
     default: Union[int, float],
     minimum: Optional[float],
 ) -> Tuple[str, "_StudyArgSpec"]:
+    """Create a study argument specification tuple used to render the HTML form."""
     return (
         key,
         _StudyArgSpec(
@@ -150,6 +154,7 @@ _ALLOWED_STUDY_ARGS: Dict[str, Tuple[str, Optional[float]]] = {
 
 
 def _parse_study_args(raw: Optional[str]) -> Dict[str, object]:
+    """Parse the JSON payload carrying Optuna study overrides from the upload form."""
     if raw is None:
         return {}
 
@@ -614,6 +619,7 @@ def _resolve_job_study_name(job: Job) -> Optional[str]:
 
 @app.get("/")
 async def index(request: Request):
+    """Render the upload form with study argument defaults sourced from environment variables."""
     study_arg_specs = [
         {
             "key": key,
@@ -636,7 +642,7 @@ async def index(request: Request):
 
 
 def _coerce_upload(value: Optional[UploadFile | Sequence[UploadFile]]) -> Optional[UploadFile]:
-    """Return the first actual upload object or None when the field was absent."""
+    """Return the first actual upload object or ``None`` when the field was absent."""
 
     if value is None:
         return None
@@ -667,6 +673,7 @@ async def upload(
     h_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
     g_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
 ):
+    """Handle problem uploads, supporting both direct Ising inputs and derived QUBO conversions."""
     # Normalise optional inputs that may arrive as lists or other sentinel values
     file = _coerce_upload(file)
     qubo_matrix = _coerce_upload(qubo_matrix)
@@ -827,6 +834,7 @@ async def upload(
 
 @app.get("/jobs")
 def list_jobs():
+    """Return all jobs ordered by submission time (newest first)."""
     with SessionLocal() as db:
         jobs = db.query(Job).order_by(Job.created_at.desc()).all()
         payload = []
@@ -854,6 +862,7 @@ def list_jobs():
 
 @app.get("/jobs/{job_id}")
 def job_status(job_id: str):
+    """Return detailed information for a single job, including derived study metadata."""
     with SessionLocal() as db:
         j = db.get(Job, job_id)
         if not j:
@@ -878,6 +887,7 @@ def job_status(job_id: str):
 
 @app.get("/jobs/{job_id}/download")
 def download_results(job_id: str):
+    """Stream a ZIP archive containing the persisted study artifacts for a completed job."""
     with SessionLocal() as db:
         j = db.get(Job, job_id)
         if not j:
@@ -899,6 +909,7 @@ def download_results(job_id: str):
 
 @app.get("/jobs/{job_id}/dashboard")
 def job_dashboard(job_id: str, request: Request):
+    """Ensure the Optuna dashboard is running and return the external URL to access it."""
     if not _dashboard_available:
         return JSONResponse({"error": "optuna-dashboard integration is unavailable"}, status_code=503)
     with SessionLocal() as db:

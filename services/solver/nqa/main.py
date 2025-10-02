@@ -1,3 +1,5 @@
+"""FastAPI bridge that wraps the Optuna-based solver as an HTTP service."""
+
 import os
 import subprocess
 import sys
@@ -98,12 +100,14 @@ class StudyRequest(BaseModel):
 
     @model_validator(mode="after")
     def _vectors_need_square_matrix(cls, model):
+        """Ensure uploaded vectors accompany a non-empty square coupling matrix."""
         if not model.J_matrix:
             raise ValueError("J_matrix must not be empty")
         return model
 
 
 def _truncate(text: str, limit: int = 4000) -> str:
+    """Return a string truncated to the last ``limit`` characters."""
     if not text:
         return ""
     text = text.strip()
@@ -113,6 +117,7 @@ def _truncate(text: str, limit: int = 4000) -> str:
 
 
 def _ensure_square_matrix(payload: List[List[float]]) -> np.ndarray:
+    """Validate that the supplied matrix is square and return it as a ``numpy`` array."""
     array = np.asarray(payload, dtype=np.float64)
     if array.ndim != 2 or array.shape[0] != array.shape[1]:
         raise HTTPException(status_code=400, detail="J_matrix must be a square 2D array")
@@ -120,6 +125,7 @@ def _ensure_square_matrix(payload: List[List[float]]) -> np.ndarray:
 
 
 def _ensure_vector(payload: Optional[List[float]], size: int, name: str) -> Optional[np.ndarray]:
+    """Validate and convert a vector payload to a ``numpy`` array of the expected length."""
     if payload is None:
         return None
     array = np.asarray(payload, dtype=np.float64)
@@ -129,6 +135,7 @@ def _ensure_vector(payload: Optional[List[float]], size: int, name: str) -> Opti
 
 
 def _sanitize_name(raw: Optional[str]) -> str:
+    """Generate a filesystem-safe study identifier from untrusted user input."""
     if raw:
         cleaned = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in raw.strip())
         cleaned = cleaned.strip("._-")
@@ -138,6 +145,7 @@ def _sanitize_name(raw: Optional[str]) -> str:
 
 
 def _prepare_study_dir(study_id: str) -> Path:
+    """Create (if necessary) and return the solver's study directory for ``study_id``."""
     study_dir = (DATA_ROOT / "studies" / study_id).resolve()
     if DATA_ROOT not in study_dir.parents and study_dir != DATA_ROOT:
         raise HTTPException(status_code=400, detail="study path escapes data root")
@@ -146,6 +154,7 @@ def _prepare_study_dir(study_id: str) -> Path:
 
 
 def _persist_inputs(study_dir: Path, j_matrix: np.ndarray, h_vector: Optional[np.ndarray], g_vector: Optional[np.ndarray]):
+    """Persist study inputs inside ``study_dir`` and return their filesystem paths."""
     inputs_dir = study_dir / "inputs"
     inputs_dir.mkdir(parents=True, exist_ok=True)
     j_path = inputs_dir / "J.npy"
@@ -168,6 +177,7 @@ def _build_command(
     g_path: Optional[Path],
     request: StudyRequest,
 ) -> List[str]:
+    """Construct the command-line invocation for ``master.py`` based on the request."""
     if not MASTER_SCRIPT.exists():
         raise HTTPException(status_code=500, detail="master script not found inside solver image")
 
@@ -205,6 +215,7 @@ def _build_command(
 
 @app.post("/run")
 def run_study(request: StudyRequest):
+    """Launch ``master.py`` for the provided study request and stream back logs."""
     j_matrix = _ensure_square_matrix(request.J_matrix)
     size = j_matrix.shape[0]
     h_vector = _ensure_vector(request.h_vector, size, "h_vector")
@@ -258,4 +269,5 @@ def run_study(request: StudyRequest):
 
 @app.get("/health")
 def health():
+    """Standard readiness probe for container orchestrators."""
     return {"status": "ready"}

@@ -1,3 +1,5 @@
+"""Background worker that polls for queued jobs and submits them to the solver service."""
+
 import json
 import os
 import time
@@ -56,10 +58,12 @@ UPDATE jobs SET status='FAILED', updated_at=NOW(), error=%s WHERE id=%s;
 
 
 def _job_dir(job_id: str) -> str:
+    """Return the on-disk directory that stores job inputs for ``job_id``."""
     return os.path.join(DATA_ROOT, "jobs", job_id)
 
 
 def _read_study_request(job_id: str) -> dict:
+    """Load the persisted study metadata written by the API layer."""
     path = os.path.join(_job_dir(job_id), REQUEST_FILENAME)
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -72,6 +76,7 @@ def _read_study_request(job_id: str) -> dict:
 
 
 def _load_matrix(path: str) -> np.ndarray:
+    """Load a dense matrix from ``path`` and validate it is square."""
     try:
         matrix = np.load(path, allow_pickle=False)
     except FileNotFoundError as exc:
@@ -84,6 +89,7 @@ def _load_matrix(path: str) -> np.ndarray:
 
 
 def _load_vector(path: str) -> Optional[np.ndarray]:
+    """Load a vector from ``path`` if it exists, enforcing a 1-D shape."""
     if not os.path.exists(path):
         return None
     try:
@@ -96,6 +102,7 @@ def _load_vector(path: str) -> Optional[np.ndarray]:
 
 
 def _int_field(payload: dict, key: str, default: int, minimum: int) -> int:
+    """Parse an integer field from the payload with minimum enforcement."""
     value = payload.get(key, default)
     try:
         parsed = int(value)
@@ -107,6 +114,7 @@ def _int_field(payload: dict, key: str, default: int, minimum: int) -> int:
 
 
 def _build_solver_payload(job: dict) -> dict:
+    """Assemble the JSON payload expected by the solver's `/run` endpoint."""
     job_id = job["id"]
     job_directory = _job_dir(job_id)
     if not os.path.isdir(job_directory):
@@ -155,6 +163,7 @@ def _build_solver_payload(job: dict) -> dict:
     return payload
 
 def run_once(conn):
+    """Select the next queued job, submit it to the solver, and update status fields."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(SELECT_NEXT)
         job = cur.fetchone()

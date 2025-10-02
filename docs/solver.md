@@ -1,6 +1,6 @@
 # Solver Service (`services/solver`)
 
-The solver service now accepts problem instances directly in the HTTP request body and drives Optuna-based hyperparameter searches by launching `nqa/master.py`.  Each request supplies a coupling matrix `J` and optional vectors `h` and `g`; the service persists these arrays to `/data/studies/<study_id>/inputs/`, spawns the Optuna runner, and returns truncated logs once execution completes.
+The solver service now accepts problem instances directly in the HTTP request body and drives Optuna-based hyperparameter searches by launching `nqa/master.py`.  Each request supplies a coupling matrix `J`, optional vectors `h` and `g`, and an optional constant energy shift; the service persists these arrays to `/data/studies/<study_id>/inputs/`, spawns the Optuna runner, and returns truncated logs once execution completes.  QUBO uploads handled by the API are converted upstream into the corresponding Ising inputs and shift before arriving here.
 
 
 ## Responsibilities
@@ -8,6 +8,7 @@ The solver service now accepts problem instances directly in the HTTP request bo
 - Validate that `J_matrix` is square and that optional vectors match its dimension.
 - Persist inputs as `.npy` files inside a fresh study directory under `DATA_ROOT/studies/`.
 - Construct an Optuna command targeting `nqa/master.py` with deterministic arguments and optional GPU selection.
+- Append `--energy_shift` when the request specifies an offset so downstream tools can report energies on the original scale.
 - Capture stdout/stderr (tails limited to 4,000 characters) and surface them in the HTTP response.
 - Return the resolved study identifier and on-disk location to the caller.
 
@@ -36,6 +37,7 @@ The solver service now accepts problem instances directly in the HTTP request bo
   "J_matrix": [[...], [...]],
   "h_vector": [...],           // optional
   "g_vector": [...],           // optional
+  "energy_shift": 0.0,        // optional float (defaults to zero)
   "study_name": "custom-id",  // optional string, sanitized to [A-Za-z0-9._-]
   "cuda_device": 0             // optional, overrides global default
 }

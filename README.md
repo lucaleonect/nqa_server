@@ -1,6 +1,6 @@
 # Neural Quantum Annealing Platform
 
-This repository packages a Neural Quantum Annealing (NQA) workflow into a set of containerised services.  It accepts Sherrington–Kirkpatrick style Ising instances (`J`, optional `h`/`g` vectors), schedules them through a GPU-enabled solver, and exposes a web/API surface for submitting jobs and downloading results.  All runtime state (inputs, results, metadata) is persisted inside Docker volumes so the whole system can be launched with a single `docker compose up`.
+This repository packages a Neural Quantum Annealing (NQA) workflow into a set of containerised services.  It accepts Sherrington–Kirkpatrick style Ising instances (`J`, optional `h`/`g` vectors) or fully populated QUBO matrices (automatically converted to the equivalent Ising problem), schedules them through a GPU-enabled solver, and exposes a web/API surface for submitting jobs and downloading results.  All runtime state (inputs, results, metadata) is persisted inside Docker volumes so the whole system can be launched with a single `docker compose up`.
 
 This server is designed to run on a machine with a single GPU and be easily deployable.
 
@@ -91,7 +91,7 @@ The solver container is exposed on `http://localhost:8081`; the scheduler reache
 
 ## Job Lifecycle
 
-1. **Submission**: Users upload a `J.npy` file (optional `h_vector.npy`, `g_vector.npy`) through the HTML form or a direct `POST /upload` request. Optuna study settings use service defaults.
+1. **Submission**: Users upload either a `J.npy` file (optional `h_vector.npy`, `g_vector.npy`) or a QUBO matrix `Q.npy` through the HTML form or a direct `POST /upload` request. An optional constant energy shift can be provided when working directly in the Ising basis; QUBO submissions derive the appropriate shift automatically so the solver's Ising energies match the original QUBO objective. Optuna study settings use service defaults.
 2. **Persistence**: The API writes the payload to `/data/jobs/<job_id>/` and creates a `Job` row (`status=QUEUED`).
 3. **Scheduling**: The scheduler polls every few seconds, marks jobs `RUNNING`, materialises the solver payload from `/data/jobs/<job_id>/`, and POSTs it to the solver’s `/run` endpoint.
 4. **Execution**: The solver assembles a command for `nqa/master.py`, ensures study inputs live under `/data/studies/<id>`, executes the Optuna run, and captures stdout/stderr tails.
