@@ -260,8 +260,9 @@ def main():
         args.mcmc_num_chains = args.mcmc_num_samples
 
     def print_log(msg: str):
-        # print_log on log.txt (append if exists)
-        with open("log.txt", "a") as f:
+        log_path = os.path.join(args.save_path, "log.txt")
+        os.makedirs(args.save_path, exist_ok=True)
+        with open(log_path, "a") as f:
             f.write(f"{msg}\n")
 
     print_log("Args recap:")
