@@ -172,3 +172,9 @@ Study names match the job ID, ensuring each run maps to a unique `/data/studies/
 - `docs/solver.md` — solver container layout, execution pipeline, and CUDA considerations.
 
 Contributions and suggestions are welcome—open an issue or submit a PR with proposed changes.
+
+
+## Acknowledgements
+
+- This workflow is powered by the open-source [Optuna](https://optuna.org/) optimization framework; huge thanks to the Optuna community for their work on reproducible, scalable hyperparameter search.
+- The interactive study visualization shipped in the API relies on [Optuna Dashboard](https://github.com/optuna/optuna-dashboard), and we appreciate the maintainers for making it available.

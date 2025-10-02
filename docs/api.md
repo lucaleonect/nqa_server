@@ -105,3 +105,8 @@ There are no automated tests dedicated to the API in this repository yet.  Consi
 - Large files are streamed to disk using `shutil.copyfileobj`; the API does not keep them in memory.
 - ZIP downloads create a temporary file using `NamedTemporaryFile(delete=False)`; FastAPI handles cleanup when the response is closed.
 - The HTML job list contains an “open dashboard” action for `RUNNING`/`DONE` jobs; clicking it opens the Optuna dashboard in a new tab using the public URL returned by the API.
+
+
+## Credits
+
+This service embeds the [Optuna](https://optuna.org/) optimization framework and bundles the [Optuna Dashboard](https://github.com/optuna/optuna-dashboard) for live study introspection. We are grateful to both projects and their communities for making these capabilities available under permissive open-source licenses.
