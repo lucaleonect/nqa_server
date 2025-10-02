@@ -26,6 +26,7 @@ This server is designed to run on a machine with a single GPU and be easily depl
 ```
 
 - **API (`services/api`)**: FastAPI application with an HTML form for uploads, REST endpoints for job management, and result packaging. All user interactions—both submissions and downloads—flow through this service.
+  The UI now also exposes one-click access to the Optuna dashboard for running/completed studies.
 - **Scheduler (`services/scheduler`)**: Background worker that polls PostgreSQL for `QUEUED` jobs, flips them to `RUNNING`, and asks the solver to execute them.
 - **Solver (`services/solver`)**: GPU-ready FastAPI service that shells into the JAX-based Optuna driver (`nqa/master.py`), writes study artefacts to `/data/studies/<id>`, and streams truncated logs back to the scheduler or API clients.
 - **PostgreSQL (`db`)**: Tracks job metadata and error messages.
@@ -109,6 +110,7 @@ All endpoints live under the API service (`http://localhost:8000` by default).  
 | `GET /jobs` | List jobs (newest first). |
 | `GET /jobs/{job_id}` | Single job with timestamps and error message. |
 | `GET /jobs/{job_id}/download` | Zip download of `/data/studies/<study_name>` (requires status `DONE`). |
+| `GET /jobs/{job_id}/dashboard` | Resolve the Optuna dashboard URL (also available via the HTML UI). |
 
 The solver exposes `GET /health` and `POST /run` internally; details are in `docs/solver.md`.
 

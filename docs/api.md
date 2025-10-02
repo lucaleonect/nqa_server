@@ -12,6 +12,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 - Serve a lightweight HTML dashboard (`/`) for manual interactions.
 - Package solver outputs into a ZIP archive on demand.
 - Provide direct download access to the live Optuna SQLite database for each study.
+- Expose Optuna's interactive dashboard and ensure only one instance runs at a time.
 
 
 ## Container Image
@@ -48,6 +49,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 | `GET /jobs/{job_id}` | Retrieve one job. | – | Same fields as the list entry, or `404` JSON `{ "error": "not found" }`. |
 | `GET /jobs/{job_id}/download` | Package solver results for a completed job. | – | When the job is `DONE` (or still `RUNNING` but producing files), returns a ZIP archive built on the fly from `<result_dir>`. Otherwise `400` with reason. |
 | `GET /jobs/{job_id}/optuna-db` | Convenience wrapper to fetch the Optuna database for the job's study. | – | Resolves the underlying study and returns the SQLite file or mirrors the errors from the study endpoint. |
+| `GET /jobs/{job_id}/dashboard` | Resolve the public Optuna Dashboard URL for the job's study. | – | Returns `{ "dashboard_url": <url> }` when the dashboard can be started. Automatically shuts down any previously running dashboard instance before serving a new one. Provides `4xx/5xx` JSON errors on failure. |
 | `GET /studies/{study_name}/optuna-db` | Fetch the Optuna database (`optuna_db.db`) for a study. | – | Returns the SQLite file even if the study is still running. Responds with `404` if the file is absent and `400` for invalid study names. |
 
 
@@ -80,6 +82,7 @@ The database engine is created with `pool_pre_ping=True` to gracefully handle id
 - Writes to the shared volume are consumed by the solver (`study_request.json`, `J.npy`, optional vectors).
 - The scheduler relies on the `jobs` table populated here; it never creates jobs itself.
 - Study directories are seeded by the API so that the solver can immediately write files.
+- When users open the Optuna dashboard (either via the HTML UI link or the `/jobs/{id}/dashboard` endpoint), the API launches the dashboard in a dedicated subprocess and terminates any previous dashboard process to avoid port conflicts.
 
 
 ## Local Development & Testing
@@ -101,3 +104,4 @@ There are no automated tests dedicated to the API in this repository yet.  Consi
 - The upload endpoint rejects files that do not end in `.npy`; this guards against accidental CSV uploads.
 - Large files are streamed to disk using `shutil.copyfileobj`; the API does not keep them in memory.
 - ZIP downloads create a temporary file using `NamedTemporaryFile(delete=False)`; FastAPI handles cleanup when the response is closed.
+- The HTML job list contains an “open dashboard” action for `RUNNING`/`DONE` jobs; clicking it opens the Optuna dashboard in a new tab using the public URL returned by the API.

@@ -184,6 +184,7 @@
                     ${job.study_name ? `&nbsp; <a href="/jobs/${jobIdEncoded}/optuna-db">download Optuna DB</a>` : ''}
                     ${job.status === 'DONE' ? `&nbsp; <a href="/jobs/${jobIdEncoded}/download">download results</a>` : ''}
                     ${job.status === 'RUNNING' ? `&nbsp; <a href="/jobs/${jobIdEncoded}/download">download partial results (job still running)</a>` : ''}
+                    ${(job.status === 'DONE' || job.status === 'RUNNING') ? `&nbsp; <a href="#" class="dashboard-link" data-job-id="${jobIdEncoded}">open dashboard</a>` : ''}
                     ${job.status === 'FAILED' && job.error ? `<pre>${escapeHtml(job.error)}</pre>` : ''}
                 `;
                 jobsDiv.appendChild(el);
@@ -224,6 +225,42 @@
 
         refresh();
         setInterval(refresh, 5000);
+
+        jobsDiv.addEventListener('click', async (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+            if (!target.classList.contains('dashboard-link')) {
+                return;
+            }
+            event.preventDefault();
+            const jobId = target.dataset.jobId;
+            if (!jobId) {
+                return;
+            }
+            target.textContent = 'opening…';
+            target.classList.add('disabled');
+            try {
+                const res = await fetch(`/jobs/${jobId}/dashboard`);
+                if (!res.ok) {
+                    const payload = await res.json().catch(() => ({}));
+                    throw new Error(payload.error || `request failed (${res.status})`);
+                }
+                const payload = await res.json();
+                if (payload.dashboard_url) {
+                    window.open(payload.dashboard_url, '_blank');
+                } else {
+                    throw new Error('dashboard URL missing');
+                }
+            } catch (err) {
+                const msgText = err instanceof Error ? err.message : String(err);
+                window.alert(`Unable to open dashboard: ${msgText}`);
+            } finally {
+                target.textContent = 'open dashboard';
+                target.classList.remove('disabled');
+            }
+        });
     </script>
 </body>
 
