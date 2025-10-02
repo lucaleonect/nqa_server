@@ -4,3 +4,4 @@ SQLAlchemy==2.0.43
 psycopg2-binary==2.9.10
 python-multipart==0.0.20
 jinja2==3.1.6
+optuna-dashboard==0.19.0

@@ -151,7 +151,9 @@
                     <strong>${job.id}</strong><br/>
                     study: <code>${job.study_name}</code> &nbsp; status: <code>${job.status}</code> &nbsp; source: ${job.filename}<br/>
                     created: ${job.created_at}
+                    ${job.study_name ? `&nbsp; <a href="/jobs/${job.id}/optuna-db">download Optuna DB</a>` : ''}
                     ${job.status === 'DONE' ? `&nbsp; <a href="/jobs/${job.id}/download">download results</a>` : ''}
+                    ${job.status === 'RUNNING' ? `&nbsp; <a href="/jobs/${job.id}/download">download partial results (job still running)</a>` : ''}
                     ${job.status === 'FAILED' && job.error ? `<pre>${job.error}</pre>` : ''}
                 `;
                 jobsDiv.appendChild(el);

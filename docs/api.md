@@ -10,6 +10,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 - Maintain job records (`QUEUED` → `RUNNING` → `DONE`/`FAILED`) in the `jobs` table.
 - Serve a lightweight HTML dashboard (`/`) for manual interactions.
 - Package solver outputs into a ZIP archive on demand.
+- Provide direct download access to the live Optuna SQLite database for each study.
 
 
 ## Container Image
@@ -45,6 +46,8 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 | `GET /jobs` | List jobs ordered by `created_at DESC`. | – | JSON array with `id`, `status`, `filename`, `created_at`, `updated_at`, `error`. Timestamps are ISO strings with `Z` suffix. |
 | `GET /jobs/{job_id}` | Retrieve one job. | – | Same payload as list entry, or `404` JSON `{ "error": "not found" }`. |
 | `GET /jobs/{job_id}/download` | Package solver results for a completed job. | – | On success (`status == DONE`), returns a ZIP file built on the fly containing files inside `<result_dir>`. Otherwise `400` with reason. |
+| `GET /jobs/{job_id}/optuna-db` | Convenience wrapper to fetch the Optuna database for the job's study. | – | Resolves the underlying study and returns the SQLite file or mirrors the errors from the study endpoint. |
+| `GET /studies/{study_name}/optuna-db` | Fetch the Optuna database (`optuna_db.db`) for a study. | – | Returns the SQLite file even if the study is still running. Responds with `404` if the file is absent and `400` for invalid study names. |
 
 
 ### Study Request Metadata

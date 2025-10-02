@@ -48,6 +48,74 @@ def _read_study_request(job_id: str) -> Dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
+def _resolve_study_dir(study_name: str) -> Optional[str]:
+    """Return an absolute study directory within STUDY_ROOT or None when invalid."""
+
+    if not study_name:
+        return None
+
+    normalized = os.path.normpath(study_name)
+    if normalized in (".", "") or normalized.startswith(".."):
+        return None
+
+    candidate = os.path.abspath(os.path.join(STUDY_ROOT, normalized))
+    root = os.path.abspath(STUDY_ROOT)
+
+    try:
+        common = os.path.commonpath([candidate, root])
+    except ValueError:
+        # Triggered when paths are on different drives under Windows semantics.
+        return None
+
+    if common != root:
+        return None
+
+    return candidate
+
+
+def _optuna_db_response(study_name: str):
+    """Return the Optuna DB for the study or an error response when missing."""
+
+    study_dir = _resolve_study_dir(study_name)
+    if study_dir is None:
+        return JSONResponse({"error": "invalid study name"}, status_code=400)
+
+    db_path = os.path.join(study_dir, "optuna_db.db")
+    if not os.path.isfile(db_path):
+        return JSONResponse({"error": "optuna database not found"}, status_code=404)
+
+    safe_study_name = study_name.replace("/", "_").replace("\\", "_")
+    download_name = f"{safe_study_name or 'study'}_optuna_db.db"
+
+    return FileResponse(db_path, filename=download_name)
+
+
+def _resolve_job_study_name(job: Job) -> Optional[str]:
+    """Best effort resolution of the study name associated with a job."""
+
+    request_meta = _read_study_request(job.id)
+    meta_name = request_meta.get("study_name")
+    if isinstance(meta_name, str) and meta_name.strip():
+        return meta_name
+
+    if job.result_dir:
+        try:
+            root = os.path.abspath(STUDY_ROOT)
+            candidate = os.path.abspath(job.result_dir)
+            common = os.path.commonpath([candidate, root])
+        except ValueError:
+            return None
+
+        if common != root:
+            return None
+
+        rel = os.path.relpath(candidate, root)
+        if rel not in (".", ""):
+            return rel
+
+    return None
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     with open(os.path.join(os.path.dirname(__file__), "templates", "index.html"), "r", encoding="utf-8") as f:
@@ -184,7 +252,7 @@ def download_results(job_id: str):
         j = db.get(Job, job_id)
         if not j:
             return JSONResponse({"error": "not found"}, status_code=404)
-        if j.status != JobStatus.DONE:
+        if (j.status != JobStatus.DONE) and (j.status != JobStatus.RUNNING):
             return JSONResponse({"error": f"job not done (status={j.status.value})"}, status_code=400)
         # zip the result dir safely into a NamedTemporaryFile
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{job_id}.zip")
@@ -197,3 +265,22 @@ def download_results(job_id: str):
                     arc = os.path.relpath(fp, j.result_dir)
                     z.write(fp, arc)
         return FileResponse(tmp_zip, filename=f"results_{job_id}.zip")
+
+
+@app.get("/studies/{study_name}/optuna-db")
+def download_optuna_db(study_name: str):
+    return _optuna_db_response(study_name)
+
+
+@app.get("/jobs/{job_id}/optuna-db")
+def download_job_optuna_db(job_id: str):
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        if not job:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        study_name = _resolve_job_study_name(job)
+
+    if not study_name:
+        return JSONResponse({"error": "unable to resolve study"}, status_code=404)
+
+    return _optuna_db_response(study_name)
