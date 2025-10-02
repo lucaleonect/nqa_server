@@ -674,7 +674,7 @@ def _coerce_upload(value: Optional[UploadFile | Sequence[UploadFile]]) -> Option
 async def upload(
     file: UploadFile = File(...),
     study_name: Optional[str] = Form(None),
-    study_args_raw: Optional[str] = Form(None),
+    study_args_raw: Optional[str] = Form(None, alias="study_args"),
     h_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
     g_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
 ):
