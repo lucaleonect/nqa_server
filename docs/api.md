@@ -6,7 +6,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 ## Responsibilities
 
 - Validate and store user uploads (`J.npy`, optional `h_vector.npy`, `g_vector.npy`).
-- Persist lightweight solver metadata (`study_name`, optional CUDA override) to `study_request.json` alongside the matrix data.
+- Persist solver metadata (`study_name`) to `study_request.json` alongside the matrix data and seed an empty study directory for downstream services.
 - Maintain job records (`QUEUED` → `RUNNING` → `DONE`/`FAILED`) in the `jobs` table.
 - Serve a lightweight HTML dashboard (`/`) for manual interactions.
 - Package solver outputs into a ZIP archive on demand.
@@ -19,7 +19,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 - **Base**: `python:3.11-slim`
 - **Runtime command**: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
 - **Ports**: `8000/tcp`
-- **Dependencies installed**: `fastapi`, `uvicorn[standard]`, `SQLAlchemy`, `psycopg2-binary`, `python-multipart`, `jinja2`
+- **Dependencies installed**: `fastapi`, `uvicorn[standard]`, `SQLAlchemy`, `psycopg2-binary`, `python-multipart`, `jinja2`, `optuna-dashboard`
 
 
 ## Environment Variables
@@ -43,9 +43,9 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 |---------------|-------------|---------|----------|
 | `GET /` | HTML upload form rendered from `templates/index.html`. | – | HTML page with fields for matrix uploads; studies run with built-in Optuna defaults. |
 | `POST /upload` | Accepts a multipart upload containing the problem matrices. | Fields: `file` (required `.npy` for `J`), `h_vector`, `g_vector` (optional `.npy`). | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. |
-| `GET /jobs` | List jobs ordered by `created_at DESC`. | – | JSON array with `id`, `status`, `filename`, `created_at`, `updated_at`, `error`. Timestamps are ISO strings with `Z` suffix. |
-| `GET /jobs/{job_id}` | Retrieve one job. | – | Same payload as list entry, or `404` JSON `{ "error": "not found" }`. |
-| `GET /jobs/{job_id}/download` | Package solver results for a completed job. | – | On success (`status == DONE`), returns a ZIP file built on the fly containing files inside `<result_dir>`. Otherwise `400` with reason. |
+| `GET /jobs` | List jobs ordered by `created_at DESC`. | – | JSON array with `id`, `status`, `filename`, `study_name`, `created_at`, `updated_at`, `error`. Timestamps are ISO strings with `Z` suffix. |
+| `GET /jobs/{job_id}` | Retrieve one job. | – | Same fields as the list entry, or `404` JSON `{ "error": "not found" }`. |
+| `GET /jobs/{job_id}/download` | Package solver results for a completed job. | – | When the job is `DONE` (or still `RUNNING` but producing files), returns a ZIP archive built on the fly from `<result_dir>`. Otherwise `400` with reason. |
 | `GET /jobs/{job_id}/optuna-db` | Convenience wrapper to fetch the Optuna database for the job's study. | – | Resolves the underlying study and returns the SQLite file or mirrors the errors from the study endpoint. |
 | `GET /studies/{study_name}/optuna-db` | Fetch the Optuna database (`optuna_db.db`) for a study. | – | Returns the SQLite file even if the study is still running. Responds with `404` if the file is absent and `400` for invalid study names. |
 
@@ -53,7 +53,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 ### Study Request Metadata
 
 - Metadata is normalised and written to `<DATA_ROOT>/jobs/<job_id>/study_request.json`.
-- `study_name` values default to the job ID to guarantee uniqueness.
+- `study_name` values default to the job ID to guarantee uniqueness. The current UI does not expose an override; custom runs can still edit the JSON directly before the scheduler picks up the job.
 - Additional solver hyperparameters currently rely on the defaults packaged with `nqa/master.py`; exposing them via the API would require future changes.
 
 
@@ -83,7 +83,7 @@ The database engine is created with `pool_pre_ping=True` to gracefully handle id
 
 ## Local Development & Testing
 
-1. Install dependencies: `pip install fastapi uvicorn[standard] SQLAlchemy psycopg2-binary python-multipart jinja2`.
+1. Install dependencies: `pip install fastapi uvicorn[standard] SQLAlchemy psycopg2-binary python-multipart jinja2 optuna-dashboard`.
 2. Set environment variables, e.g.:
    ```bash
    export DATABASE_URL=postgresql+psycopg2://nqa:nqa_password@localhost:5432/nqa

@@ -8,6 +8,7 @@ The scheduler is a lightweight polling worker that bridges the database and the 
 - Poll the `jobs` table for the oldest `QUEUED` entry.
 - Atomically transition a job to `RUNNING` prior to execution.
 - Materialise the solver payload by loading `J.npy`, optional vectors, and `study_request.json` from `/data/jobs/<job_id>/`.
+- Validate matrix/vector shapes while constructing the payload; malformed files surface as `FAILED` jobs with diagnostic messages.
 - Invoke the solver service (`POST /run`) with the fully expanded Optuna request.
 - Handle HTTP/network failures and solver-side errors, downgrading jobs to `FAILED` with diagnostic text.
 - Retry the polling loop indefinitely, backing off slightly when the queue is empty.
@@ -16,11 +17,9 @@ The scheduler is a lightweight polling worker that bridges the database and the 
 ## Container Image
 
 - **Dockerfile**: `services/scheduler/Dockerfile`
-- **Base**: `bitnami/spark:3.5` (currently used only for its Python + Spark environment; Spark execution is legacy).
+- **Base**: `python:3.11-slim`.
 - **Runtime command**: `python3 -m app.main`
-- **Dependencies installed**: `psycopg2-binary`, `SQLAlchemy`, `requests`, `numpy`
-
-> The historical Spark-based executor (`app/spark_job.py`) is still present for archival purposes but is not imported or executed by the current scheduler.
+- **Dependencies installed**: `psycopg2-binary`, `requests`, `numpy`, `SQLAlchemy`
 
 
 ## Environment Variables
@@ -38,7 +37,7 @@ The scheduler is a lightweight polling worker that bridges the database and the 
 `app/main.py` implements a `run_once(conn)` helper that encapsulates the main workflow:
 
 1. `SELECT_NEXT` retrieves the oldest queued job (`ORDER BY created_at ASC LIMIT 1`).
-2. If no job is found, the caller sleeps for four seconds; otherwise the loop continues immediately after the solver call.
+2. If no job is found, the caller sleeps for four seconds; otherwise the loop continues after a two-second pause.
 3. Before contacting the solver, `MARK_RUNNING` sets the status to `RUNNING` and commits the transaction. This prevents duplicate scheduling when multiple worker instances run concurrently.
 4. The solver endpoint is called with `requests.post`. The payload contains the coupling matrix, optional vectors, study metadata, and CUDA preference required by `nqa/master.py`.
 5. Responses are interpreted as follows:
@@ -59,7 +58,7 @@ The outer `while True` handles database connectivity issues by sleeping four sec
 ## Interaction with the Solver
 
 - Endpoint constructed from `SOLVER_URL.rstrip('/') + '/run'`.
-- Request payload: JSON document with keys `J_matrix`, optional `h_vector`/`g_vector`, and the study metadata recorded by the API (`study_name`, optional `cuda_device`). Per-study hyperparameters such as Optuna trial counts come from the solver defaults.
+- Request payload: JSON document with keys `J_matrix`, optional `h_vector`/`g_vector`, and the study metadata recorded by the API (`study_name`, falling back to the job ID when missing). Per-study hyperparameters such as Optuna trial counts come from the solver defaults.
 - Timeout: `SOLVER_TIMEOUT` if provided; otherwise the request may block until the solver responds.
 - Successful responses are logged verbatim (limited to 500 characters) to aid debugging and to capture solver stdout/stderr tails.
 - Errors are serialised to strings before being written to the database. When the solver returns a JSON object with `detail`/`error`/`stdout`/`stderr` keys, the scheduler normalises the text into a compact message.
@@ -97,4 +96,4 @@ Ensure a solver instance is reachable before starting the scheduler; otherwise e
 
 - **Retry semantics**: For long-running jobs you can layer exponential back-off or more granular status tracking (e.g., storing solver response codes).
 - **Parallelism**: The existing logic is safe for horizontal scaling—multiple scheduler instances can run concurrently as long as they share the same database.
-- **Spark integration**: If you plan to revive Spark-based execution, refer to `app/spark_job.py` for the previous approach (submitting `spark-submit` jobs that dispatched `nqa/worker.py`). That script will need updates to mirror the new `nqa/master.py` payload contract.
+- **Custom metadata**: Extending the API to persist additional fields in `study_request.json` (for example, CUDA device hints) will automatically flow through the scheduler—`_build_solver_payload` copies any recognised keys into the solver payload with validation.

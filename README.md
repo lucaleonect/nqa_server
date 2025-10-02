@@ -41,7 +41,7 @@ This server is designed to run on a machine with a single GPU and be easily depl
 - `services/solver` — solver service, JAX/Optax code (`nqa/`), and its container definition.
 - `paper.pdf` — reference manuscript describing the underlying NQA method.
 - `shared-data/` — empty host folder mounted as the shared volume during local runs.
-- `docs/` *(created in this change)* — service-focused documentation (`api.md`, `scheduler.md`, `solver.md`).
+- `docs/` — service-focused documentation (`api.md`, `scheduler.md`, `solver.md`).
 
 
 ## Prerequisites
