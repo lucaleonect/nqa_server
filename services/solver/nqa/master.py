@@ -152,22 +152,28 @@ def objective(trial):
 
 
 def main():
-    optuna_sampler = optuna.samplers.TPESampler()
-    # optuna_sampler = optuna.samplers.CmaEsSampler()
-    try:
-        study = optuna.create_study(
-            study_name=STUDY_NAME, storage=DB_STORAGE, direction="minimize", sampler=optuna_sampler
-        )
-        for arg in default_args:
-            study.set_user_attr(arg, default_args[arg])
-        study.set_user_attr("Trial Args", trial_args_settings)
+    optuna_sampler = optuna.samplers.CmaEsSampler()
+    study = optuna.create_study(
+        study_name=STUDY_NAME, storage=DB_STORAGE, direction="minimize", sampler=optuna_sampler
+    )
+    for arg in default_args:
+        study.set_user_attr(arg, default_args[arg])
+    study.set_user_attr("Trial Args", trial_args_settings)
 
-    except optuna.exceptions.DuplicatedStudyError:
-        study = optuna.load_study(study_name=STUDY_NAME, storage=DB_STORAGE, sampler=optuna_sampler)
+    tpe_trials = NUM_TRIALS//4
+    cmaes_trials = NUM_TRIALS - tpe_trials
 
     study.optimize(
         objective,
-        n_trials=NUM_TRIALS,
+        n_trials=cmaes_trials,
+        n_jobs=NUM_WORKERS,
+    )
+
+    optuna_sampler = optuna.samplers.TPESampler()
+    study = optuna.load_study(study_name=STUDY_NAME, storage=DB_STORAGE, sampler=optuna_sampler)
+    study.optimize(
+        objective,
+        n_trials=tpe_trials,
         n_jobs=NUM_WORKERS,
     )
 

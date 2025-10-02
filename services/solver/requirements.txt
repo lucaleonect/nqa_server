@@ -5,3 +5,4 @@ optuna==4.5.0
 matplotlib==3.10.6
 fastapi==0.115.2
 uvicorn==0.30.3
+cmaes==0.12.0
