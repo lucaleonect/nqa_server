@@ -6,163 +6,357 @@
     <title>nqa-server</title>
     <style>
         :root {
-            color-scheme: light;
+            color-scheme: dark;
+            --bg: #0b1220;
+            --bg-accent: radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.12), transparent 55%),
+                radial-gradient(circle at 80% 0%, rgba(94, 234, 212, 0.13), transparent 40%);
+            --surface: #111b2e;
+            --surface-soft: #162338;
+            --border: #1f2a3e;
+            --muted: #94a3b8;
+            --text: #e2e8f0;
+            --accent: #38bdf8;
+            --accent-soft: rgba(56, 189, 248, 0.18);
+            --accent-strong: #0ea5e9;
+            --shadow: 0 24px 40px -24px rgba(8, 145, 178, 0.55);
+        }
+
+        * {
+            box-sizing: border-box;
         }
 
         body {
-            font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-            margin: 1.5rem;
-            color: #2e2e2e;
-            max-width: 960px;
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.6;
+            background: var(--bg);
+            background-image: var(--bg-accent);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            padding: clamp(2.5rem, 4vw, 4rem) 1.5rem;
+        }
+
+        .container {
+            width: min(960px, 100%);
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        header {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        h1 {
+            font-size: clamp(2.1rem, 4vw, 2.6rem);
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            margin: 0;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 1.4rem;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+        }
+
+        .lead {
+            color: var(--muted);
+            margin: 0;
+            font-size: 1rem;
         }
 
         form {
+            background: linear-gradient(160deg, rgba(15, 23, 42, 0.88), rgba(17, 24, 39, 0.92));
+            border: 1px solid rgba(148, 163, 184, 0.08);
+            border-radius: 18px;
+            padding: clamp(1.6rem, 3vw, 2.2rem);
+            box-shadow: var(--shadow);
             display: flex;
             flex-direction: column;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
+            gap: 1.4rem;
         }
 
         fieldset {
-            border: 1px solid #d0d7de;
-            border-radius: 10px;
-            padding: 1.1rem 1.2rem;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 1.2rem 1.3rem 1.35rem;
+            background: var(--surface);
         }
 
         legend {
+            padding: 0 0.6rem;
             font-weight: 600;
-            padding: 0 0.4rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 0.74rem;
         }
 
         label {
             display: flex;
             flex-direction: column;
-            gap: 0.35rem;
-            margin-bottom: 0.75rem;
+            gap: 0.4rem;
+            margin-bottom: 0.85rem;
             font-size: 0.95rem;
+            color: var(--text);
         }
 
         input[type="file"],
         input[type="text"],
         input[type="number"] {
             font-size: 0.95rem;
-            padding: 0.4rem 0.55rem;
-            border: 1px solid #bfc3c8;
-            border-radius: 6px;
-            background: #fff;
+            padding: 0.5rem 0.65rem;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            background: var(--surface-soft);
+            color: var(--text);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+        }
+
+        input[type="file"] {
+            padding: 0.35rem 0.4rem;
+        }
+
+        input::file-selector-button {
+            background: rgba(148, 163, 184, 0.18);
+            border: none;
+            color: var(--text);
+            font-size: 0.9rem;
+            padding: 0.35rem 0.8rem;
+            margin-right: 0.75rem;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        input::file-selector-button:hover {
+            background: rgba(56, 189, 248, 0.18);
+        }
+
+        input:focus {
+            outline: none;
+            border-color: rgba(56, 189, 248, 0.5);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+        }
+
+        input.invalid,
+        input.invalid:focus {
+            border-color: rgba(248, 113, 113, 0.65);
+            box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2);
         }
 
         .study-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 0.75rem 1rem;
+            gap: 1rem 1.2rem;
         }
 
         button {
             align-self: flex-start;
-            padding: 0.55rem 1.2rem;
-            font-size: 0.95rem;
-            border-radius: 999px;
-            border: 1px solid #0969da;
-            background: #0969da;
-            color: #fff;
+            padding: 0.65rem 1.6rem;
+            font-size: 0.98rem;
+            border-radius: 14px;
+            border: none;
+            background: linear-gradient(150deg, var(--accent), var(--accent-strong));
+            color: #0f172a;
+            font-weight: 600;
             cursor: pointer;
+            transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease;
+            box-shadow: 0 12px 25px -12px rgba(14, 165, 233, 0.75);
         }
 
         button:hover {
-            background: #ffffff;
+            transform: translateY(-2px);
+            filter: brightness(1.05);
+            box-shadow: 0 18px 32px -16px rgba(56, 189, 248, 0.75);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+            box-shadow: none;
         }
 
         .hint {
-            color: #ffffff;
+            color: var(--muted);
+            font-size: 0.86rem;
+            margin: -0.1rem 0 0;
+        }
+
+        .math-hint {
+            margin-bottom: 0.8rem;
+            line-height: 1.5;
+        }
+
+        .math-hint code {
             font-size: 0.88rem;
-            margin-top: -0.4rem;
+        }
+
+        .math-display {
+            display: block;
+            margin: 0.35rem 0 0.2rem;
+            padding: 0.55rem 0.75rem;
+            text-align: center;
+            font-family: "Latin Modern Math", "Cambria Math", "STIX Two Math", "Times New Roman", serif;
+            font-size: 1.05rem;
+            background: rgba(148, 163, 184, 0.08);
+            border-radius: 10px;
+        }
+
+        #msg {
+            min-height: 1.5rem;
+            font-size: 0.95rem;
+            color: var(--accent);
+            margin: -0.6rem 0 0;
+        }
+
+        #jobs {
+            display: grid;
+            gap: 0.9rem;
         }
 
         .job {
-            border: 1px solid #d0d7de;
-            border-radius: 10px;
-            padding: 0.8rem 1.1rem;
-            margin: 0.45rem 0;
-            font-size: 0.92rem;
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            border-radius: 14px;
+            padding: 1rem 1.1rem;
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(10px);
+            font-size: 0.94rem;
+            line-height: 1.75;
         }
 
         .job strong {
-            font-size: 1rem;
+            font-size: 1.02rem;
+            letter-spacing: 0.02em;
         }
 
         code {
-            background: #f6f8fa;
-            padding: 0.18rem 0.35rem;
-            border-radius: 4px;
+            background: rgba(15, 118, 110, 0.22);
+            padding: 0.2rem 0.45rem;
+            border-radius: 6px;
+            font-size: 0.88rem;
+            color: #99f6e4;
         }
 
         .study-id {
-            color: #57606a;
+            color: var(--muted);
             font-size: 0.85rem;
         }
 
-        @media (max-width: 620px) {
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .dashboard-link.disabled {
+            pointer-events: none;
+            opacity: 0.6;
+            text-decoration: none;
+        }
+
+        pre {
+            background: rgba(15, 23, 42, 0.7);
+            border-radius: 10px;
+            padding: 0.75rem;
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            overflow-x: auto;
+        }
+
+        @media (max-width: 720px) {
             body {
-                margin: 1rem;
+                padding: 2rem 1.1rem 3rem;
+            }
+
+            form {
+                border-radius: 14px;
+            }
+
+            fieldset {
+                padding: 1rem 1.05rem 1.1rem;
+            }
+
+            legend {
+                font-size: 0.7rem;
             }
         }
     </style>
 </head>
 
 <body>
-    <h1>nqa-server</h1>
-    <form id="uploadForm">
-        <fieldset>
-            <legend>Problem instance</legend>
-            <label>
-                J matrix (.npy, required)
-                <input type="file" name="file" accept=".npy" required />
-            </label>
-            <label>
-                h vector (.npy, optional)
-                <input type="file" name="h_vector" accept=".npy" />
-            </label>
-            <label>
-                g vector (.npy, optional)
-                <input type="file" name="g_vector" accept=".npy" />
-            </label>
-            <label>
-                Study name (optional)
-                <input type="text" name="study_name" placeholder="choose a unique name" />
-            </label>
-            <p class="hint">Leave optional vectors blank for zero fields. Use study parameters below to override Optuna defaults.</p>
-        </fieldset>
-
-        <fieldset>
-            <legend>Study parameters</legend>
-            <p class="hint">Defaults mirror the solver's CLI. Adjust values to tune Optuna and annealer behaviour.</p>
-            <div class="study-grid">
-                {% for spec in study_arg_specs %}
+    <main class="container">
+        <header>
+            <h1>Neural Quantum Annealing Server</h1>
+            <p class="lead">Classical and Quantum Spin Glass Solver.</p>
+        </header>
+        <form id="uploadForm">
+            <fieldset>
+                <legend>Problem instance</legend>
+                <p class="hint math-hint">Provide the dense coupling matrix <code>J</code> together with the longitudinal (<code>h</code>) and transverse (<code>g</code>) field vectors as numpy arrays in .npy format. The solver searches for the ground state of the transverse-field Sherrington–Kirkpatrick Hamiltonian:</p>
+                <div class="math-display">H = ∑<sub>ij</sub> J<sub>ij</sub> σ<sub>i</sub><sup>z</sup> σ<sub>j</sub><sup>z</sup> + ∑<sub>i</sub> h<sub>i</sub> σ<sub>i</sub><sup>z</sup> − ∑<sub>i</sub> g<sub>i</sub> σ<sub>i</sub><sup>x</sup></div>
                 <label>
-                    {{ spec.label }}
-                    <input type="number"
-                        class="study-arg-input"
-                        name="study_arg_{{ spec.key }}"
-                        data-arg="{{ spec.key }}"
-                        data-type="{{ spec.kind }}"
-                        value="{{ spec.default_text }}"
-                        step="{{ spec.step }}"
-                        {% if spec.minimum is not none %}min="{{ spec.minimum }}"{% endif %}
-                    />
+                    J matrix (.npy, required)
+                    <input type="file" name="file" accept=".npy" required />
                 </label>
-                {% endfor %}
-            </div>
-            <input type="hidden" name="study_args" id="studyArgsField" />
-        </fieldset>
+                <label>
+                    h vector (.npy, optional)
+                    <input type="file" name="h_vector" accept=".npy" />
+                </label>
+                <label>
+                    g vector (.npy, optional)
+                    <input type="file" name="g_vector" accept=".npy" />
+                </label>
+                <label>
+                    Study name (optional)
+                    <input type="text" name="study_name" placeholder="choose a unique name" />
+                </label>
+                <p class="hint">Leave optional vectors blank for zero fields. Use study parameters below to override Optuna defaults.</p>
+            </fieldset>
 
-        <button type="submit">Start study</button>
-    </form>
+            <fieldset>
+                <legend>Study parameters</legend>
+                <p class="hint">Defaults mirror the solver's CLI. Adjust values to tune Optuna and annealer behaviour.</p>
+                <div class="study-grid">
+                    {% for spec in study_arg_specs %}
+                    <label>
+                        {{ spec.label }}
+                        <input type="number"
+                            class="study-arg-input"
+                            name="study_arg_{{ spec.key }}"
+                            data-arg="{{ spec.key }}"
+                            data-type="{{ spec.kind }}"
+                            data-label="{{ spec.label }}"
+                            value="{{ spec.default_text }}"
+                            step="{{ spec.step }}"
+                            {% if spec.minimum is not none %}min="{{ spec.minimum }}"{% endif %}
+                        />
+                    </label>
+                    {% endfor %}
+                </div>
+                <input type="hidden" name="study_args" id="studyArgsField" />
+            </fieldset>
 
-    <p id="msg"></p>
+            <button type="submit">Start study</button>
+        </form>
 
-    <h2>Jobs</h2>
-    <div id="jobs"></div>
+        <p id="msg"></p>
+
+        <h2>Jobs</h2>
+        <div id="jobs"></div>
+    </main>
 
     <script>
         const jobsDiv = document.getElementById('jobs');
@@ -192,39 +386,91 @@
         const packStudyArgs = (form) => {
             const hidden = form.querySelector('#studyArgsField');
             if (!hidden) {
-                return { ok: true };
+                return { ok: true, payload: {} };
             }
 
             const inputs = form.querySelectorAll('.study-arg-input');
             const payload = {};
+            const effectiveValues = Object.create(null);
+            const metaByKey = new Map();
             let hasValues = false;
 
             for (const input of inputs) {
                 const key = input.dataset.arg;
                 const type = input.dataset.type;
+                const label = input.dataset.label || key;
                 const raw = input.value.trim();
                 if (!key || !type) {
                     continue;
                 }
-                if (!raw) {
-                    continue;
-                }
-                const numeric = Number(raw);
-                if (!Number.isFinite(numeric)) {
-                    return { ok: false, error: `${key} must be numeric` };
-                }
-                if (type === 'int' && !Number.isInteger(numeric)) {
-                    return { ok: false, error: `${key} must be an integer` };
-                }
-                const minAttr = input.getAttribute('min');
-                if (minAttr !== null && minAttr !== '') {
-                    const minValue = Number(minAttr);
-                    if (Number.isFinite(minValue) && numeric < minValue) {
-                        return { ok: false, error: `${key} must be ≥ ${minAttr}` };
+
+                metaByKey.set(key, { input, label });
+
+                let effectiveNumeric = null;
+
+                if (raw) {
+                    const numeric = Number(raw);
+                    if (!Number.isFinite(numeric)) {
+                        input.classList.add('invalid');
+                        return { ok: false, error: `${label} must be numeric`, focus: input };
+                    }
+                    if (type === 'int' && !Number.isInteger(numeric)) {
+                        input.classList.add('invalid');
+                        return { ok: false, error: `${label} must be an integer`, focus: input };
+                    }
+                    const minAttr = input.getAttribute('min');
+                    if (minAttr !== null && minAttr !== '') {
+                        const minValue = Number(minAttr);
+                        if (Number.isFinite(minValue) && numeric < minValue) {
+                            input.classList.add('invalid');
+                            return { ok: false, error: `${label} must be ≥ ${minAttr}`, focus: input };
+                        }
+                    }
+                    const coerced = type === 'int' ? Math.trunc(numeric) : numeric;
+                    payload[key] = coerced;
+                    hasValues = true;
+                    effectiveNumeric = coerced;
+                } else {
+                    const fallbackRaw = typeof input.defaultValue === 'string' ? input.defaultValue.trim() : '';
+                    if (fallbackRaw) {
+                        const fallbackNumeric = Number(fallbackRaw);
+                        if (Number.isFinite(fallbackNumeric)) {
+                            effectiveNumeric = type === 'int' ? Math.trunc(fallbackNumeric) : fallbackNumeric;
+                        }
                     }
                 }
-                payload[key] = type === 'int' ? Math.trunc(numeric) : numeric;
-                hasValues = true;
+
+                if (effectiveNumeric !== null) {
+                    effectiveValues[key] = effectiveNumeric;
+                }
+            }
+
+            for (const [key, value] of Object.entries(effectiveValues)) {
+                if (!key.endsWith('_min')) {
+                    continue;
+                }
+                const maxKey = key.replace(/_min$/, '_max');
+                if (
+                    maxKey === key ||
+                    !Object.prototype.hasOwnProperty.call(effectiveValues, maxKey)
+                ) {
+                    continue;
+                }
+                const maxValue = effectiveValues[maxKey];
+                if (value > maxValue) {
+                    const minMeta = metaByKey.get(key);
+                    const maxMeta = metaByKey.get(maxKey);
+                    if (minMeta && minMeta.input) {
+                        minMeta.input.classList.add('invalid');
+                    }
+                    if (maxMeta && maxMeta.input) {
+                        maxMeta.input.classList.add('invalid');
+                    }
+                    const minLabel = (minMeta && minMeta.label) || key;
+                    const maxLabel = (maxMeta && maxMeta.label) || maxKey;
+                    const focus = (minMeta && minMeta.input) || (maxMeta && maxMeta.input) || null;
+                    return { ok: false, error: `${minLabel} must be ≤ ${maxLabel}`, focus };
+                }
             }
 
             if (hasValues) {
@@ -232,7 +478,8 @@
             } else {
                 hidden.value = '';
             }
-            return { ok: true };
+
+            return { ok: true, payload };
         };
 
         async function refresh() {
@@ -268,10 +515,30 @@
         document.getElementById('uploadForm').addEventListener('submit', async (event) => {
             event.preventDefault();
             const form = event.target;
+            if (!(form instanceof HTMLFormElement)) {
+                return;
+            }
+
+            const allInputs = form.querySelectorAll('input');
+            allInputs.forEach((input) => input.classList.remove('invalid'));
             const packResult = packStudyArgs(form);
             if (!packResult.ok) {
                 msg.textContent = `Study arguments error: ${packResult.error}`;
+                if (packResult.focus && typeof packResult.focus.focus === 'function') {
+                    packResult.focus.focus();
+                }
                 return;
+            }
+
+            const studyNameInput = form.querySelector('input[name="study_name"]');
+            if (studyNameInput) {
+                const trimmedName = studyNameInput.value.trim();
+                if (trimmedName && !/^[A-Za-z0-9._-]+$/.test(trimmedName)) {
+                    studyNameInput.classList.add('invalid');
+                    msg.textContent = 'Study name may only include letters, numbers, dashes, dots, or underscores.';
+                    studyNameInput.focus();
+                    return;
+                }
             }
 
             const formData = new FormData(form);

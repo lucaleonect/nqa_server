@@ -41,6 +41,49 @@ os.makedirs(STUDY_ROOT, exist_ok=True)
 logger = logging.getLogger(__name__)
 
 
+def _load_env_study_default(
+    key: str, spec_kind: str, default: Union[int, float], minimum: Optional[float]
+) -> Union[int, float]:
+    env_key = f"HPO_DEFAULT_{key.upper()}"
+    raw_value = os.environ.get(env_key)
+    if raw_value is None or not str(raw_value).strip():
+        return default
+
+    try:
+        coerced = int(raw_value) if spec_kind == "int" else float(raw_value)
+    except (TypeError, ValueError):
+        logging.getLogger(__name__).warning(
+            "Invalid value for %s=%r; falling back to %s", env_key, raw_value, default
+        )
+        return default
+
+    if minimum is not None and coerced < minimum:
+        logging.getLogger(__name__).warning(
+            "Value for %s below minimum %s; falling back to %s", env_key, minimum, default
+        )
+        return default
+
+    return coerced
+
+
+def _build_spec(
+    key: str,
+    label: str,
+    spec_kind: str,
+    default: Union[int, float],
+    minimum: Optional[float],
+) -> Tuple[str, "_StudyArgSpec"]:
+    return (
+        key,
+        _StudyArgSpec(
+            label,
+            spec_kind,
+            _load_env_study_default(key, spec_kind, default, minimum),
+            minimum,
+        ),
+    )
+
+
 app = FastAPI(title="nqa-server")
 
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
@@ -56,102 +99,42 @@ class _StudyArgSpec:
 
 _STUDY_ARG_SPECS: "OrderedDict[str, _StudyArgSpec]" = OrderedDict(
     (
-        (
-            "num_trials",
-            _StudyArgSpec("Number of trials", "int", 100, 1),
-        ),
-        (
-            "num_workers",
-            _StudyArgSpec("Number of parallel workers", "int", 1, 1),
-        ),
-        (
-            "trial_max_runtime",
-            _StudyArgSpec("Trial max runtime (seconds)", "int", 60 * 30, 1),
-        ),
-        (
-            "vqa_num_annealing_steps_min",
-            _StudyArgSpec("VQA annealing steps (min)", "int", 1000, 1),
-        ),
-        (
-            "vqa_num_annealing_steps_max",
-            _StudyArgSpec("VQA annealing steps (max)", "int", 10000, 1),
-        ),
-        (
-            "vqa_num_updates_per_step_min",
-            _StudyArgSpec("VQA updates per step (min)", "int", 1, 1),
-        ),
-        (
-            "vqa_num_updates_per_step_max",
-            _StudyArgSpec("VQA updates per step (max)", "int", 5, 1),
-        ),
-        (
-            "vqa_annealing_field_scale_min",
-            _StudyArgSpec("Annealing field scale (min)", "float", 1e-1, 0.0),
-        ),
-        (
-            "vqa_annealing_field_scale_max",
-            _StudyArgSpec("Annealing field scale (max)", "float", 1e1, 0.0),
-        ),
-        (
-            "vqa_catalyst_field_scale_min",
-            _StudyArgSpec("Catalyst field scale (min)", "float", 1e-1, 0.0),
-        ),
-        (
-            "vqa_catalyst_field_scale_max",
-            _StudyArgSpec("Catalyst field scale (max)", "float", 1e1, 0.0),
-        ),
-        (
-            "sgd_learning_rate_min",
-            _StudyArgSpec("SGD learning rate (min)", "float", 1e-3, 0.0),
-        ),
-        (
-            "sgd_learning_rate_max",
-            _StudyArgSpec("SGD learning rate (max)", "float", 1e0, 0.0),
-        ),
-        (
-            "sgd_momentum_min",
-            _StudyArgSpec("SGD momentum (min)", "float", 0.0, 0.0),
-        ),
-        (
-            "sgd_momentum_max",
-            _StudyArgSpec("SGD momentum (max)", "float", 0.9, 0.0),
-        ),
-        (
-            "sr_diagonal_shift_min",
-            _StudyArgSpec("SR diagonal shift (min)", "float", 1e-9, 0.0),
-        ),
-        (
-            "sr_diagonal_shift_max",
-            _StudyArgSpec("SR diagonal shift (max)", "float", 1e-2, 0.0),
-        ),
-        (
-            "dbqs_num_hidden_layers",
-            _StudyArgSpec("DBQS hidden layers", "int", 2, 1),
-        ),
-        (
+        _build_spec("num_trials", "Number of trials", "int", 100, 1),
+        _build_spec("num_workers", "Number of parallel workers", "int", 1, 1),
+        _build_spec("trial_max_runtime", "Trial max runtime (seconds)", "int", 60 * 30, 1),
+        _build_spec("vqa_num_annealing_steps_min", "VQA annealing steps (min)", "int", 1000, 1),
+        _build_spec("vqa_num_annealing_steps_max", "VQA annealing steps (max)", "int", 10000, 1),
+        _build_spec("vqa_num_updates_per_step_min", "VQA updates per step (min)", "int", 1, 1),
+        _build_spec("vqa_num_updates_per_step_max", "VQA updates per step (max)", "int", 5, 1),
+        _build_spec("vqa_annealing_field_scale_min", "Annealing field scale (min)", "float", 1e-1, 0.0),
+        _build_spec("vqa_annealing_field_scale_max", "Annealing field scale (max)", "float", 1e1, 0.0),
+        _build_spec("vqa_catalyst_field_scale_min", "Catalyst field scale (min)", "float", 1e-1, 0.0),
+        _build_spec("vqa_catalyst_field_scale_max", "Catalyst field scale (max)", "float", 1e1, 0.0),
+        _build_spec("sgd_learning_rate_min", "SGD learning rate (min)", "float", 1e-3, 0.0),
+        _build_spec("sgd_learning_rate_max", "SGD learning rate (max)", "float", 1e0, 0.0),
+        _build_spec("sgd_momentum_min", "SGD momentum (min)", "float", 0.0, 0.0),
+        _build_spec("sgd_momentum_max", "SGD momentum (max)", "float", 0.9, 0.0),
+        _build_spec("sr_diagonal_shift_min", "SR diagonal shift (min)", "float", 1e-9, 0.0),
+        _build_spec("sr_diagonal_shift_max", "SR diagonal shift (max)", "float", 1e-2, 0.0),
+        _build_spec("dbqs_num_hidden_layers", "DBQS hidden layers", "int", 2, 1),
+        _build_spec(
             "dbqs_unit_density_per_layer_min",
-            _StudyArgSpec("DBQS unit density per layer (min)", "float", 0.25, 0.0),
+            "DBQS unit density per layer (min)",
+            "float",
+            0.25,
+            0.0,
         ),
-        (
+        _build_spec(
             "dbqs_unit_density_per_layer_max",
-            _StudyArgSpec("DBQS unit density per layer (max)", "float", 4.0, 0.0),
+            "DBQS unit density per layer (max)",
+            "float",
+            4.0,
+            0.0,
         ),
-        (
-            "mcmc_num_samples_min",
-            _StudyArgSpec("MCMC samples (min)", "int", 2**3, 1),
-        ),
-        (
-            "mcmc_num_samples_max",
-            _StudyArgSpec("MCMC samples (max)", "int", 2**6, 1),
-        ),
-        (
-            "mcmc_num_sweep_steps_min",
-            _StudyArgSpec("MCMC sweep steps (min)", "int", 2**2, 1),
-        ),
-        (
-            "mcmc_num_sweep_steps_max",
-            _StudyArgSpec("MCMC sweep steps (max)", "int", 2**6, 1),
-        ),
+        _build_spec("mcmc_num_samples_min", "MCMC samples (min)", "int", 2**3, 1),
+        _build_spec("mcmc_num_samples_max", "MCMC samples (max)", "int", 2**6, 1),
+        _build_spec("mcmc_num_sweep_steps_min", "MCMC sweep steps (min)", "int", 2**2, 1),
+        _build_spec("mcmc_num_sweep_steps_max", "MCMC sweep steps (max)", "int", 2**6, 1),
     )
 )
 
