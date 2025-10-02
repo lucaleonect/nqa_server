@@ -22,7 +22,7 @@ This server is designed to run on a machine with a single GPU and be easily depl
                             ┌──────────▼──────────┐                               │
                             │      Solver         │             results           │            
                             │ (FastAPI + JAX NQA) │───────────────────────────────┘
-                            └─────────────────────┘
+                            └─────────────────────┘       (continuous stream)
 ```
 
 - **API (`services/api`)**: FastAPI application with an HTML form for uploads, REST endpoints for job management, and result packaging. All user interactions—both submissions and downloads—flow through this service.
@@ -73,6 +73,16 @@ open http://localhost:8000
 
 The solver container is exposed on `http://localhost:8081`; the scheduler reaches it via the internal Docker network (`http://solver:8081`).  PostgreSQL listens on `localhost:5432` using the credentials in `.env`.
 
+
+## Web UI Preview
+
+![Web UI preview](docs/ui-preview.svg)
+
+- Upload dense SK or QUBO inputs alongside optional field vectors straight from the form.
+- Toggle light and dark themes while inline validation hints explain required formats.
+- Track job progress, downloads, and dashboard links from the status feed without leaving the page.
+
+_Source: `services/api/app/templates/index.html`._
 
 ## Configuration Reference
 
