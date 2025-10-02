@@ -1,0 +1,4 @@
+from typing import Union
+from utils.variational_quantum_states.boltzmann_quantum_states import DeepBoltzmannQuantumState
+
+VariationalQuantumState = Union[DeepBoltzmannQuantumState]
