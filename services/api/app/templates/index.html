@@ -327,6 +327,52 @@
             letter-spacing: 0.02em;
         }
 
+        .job-actions {
+            margin-top: 0.75rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .job-action {
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            border-radius: 999px;
+            padding: 0.45rem 0.95rem;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .job-action:hover:not(:disabled) {
+            border-color: rgba(37, 99, 235, 0.35);
+            transform: translateY(-1px);
+        }
+
+        .job-action:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px var(--focus-ring);
+        }
+
+        .job-action:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+            transform: none;
+        }
+
+        .job-action--accent {
+            border: none;
+            background: linear-gradient(150deg, var(--accent), var(--accent-strong));
+            color: var(--button-text);
+            box-shadow: 0 10px 18px -14px rgba(37, 99, 235, 0.7);
+        }
+
+        .job-action--accent:hover:not(:disabled) {
+            transform: translateY(-1px) scale(1.01);
+        }
+
         code {
             background: var(--code-bg);
             padding: 0.2rem 0.45rem;
@@ -736,15 +782,42 @@
                 const jobIdEncoded = encodeURIComponent(job.id);
                 const el = document.createElement('div');
                 el.className = 'job';
+
+                const createdLineParts = [`created: ${escapeHtml(job.created_at)}`];
+                if (job.status !== 'RUNNING') {
+                    const inlineLinks = [];
+                    if (job.study_name) {
+                        inlineLinks.push(`<a href="/jobs/${jobIdEncoded}/optuna-db">download Optuna DB</a>`);
+                    }
+                    if (job.status === 'DONE') {
+                        inlineLinks.push(`<a href="/jobs/${jobIdEncoded}/download">download results</a>`);
+                    }
+                    if (job.status === 'DONE') {
+                        inlineLinks.push(`<a href="#" class="dashboard-link" data-job-id="${jobIdEncoded}" data-action="open-dashboard">open dashboard</a>`);
+                    }
+                    if (inlineLinks.length > 0) {
+                        createdLineParts.push('&nbsp; ' + inlineLinks.join(' &nbsp; '));
+                    }
+                }
+
+                let trailingMarkup = '';
+                if (job.status === 'RUNNING') {
+                    const hasStudy = Boolean(job.study_name);
+                    const dbButton = `<button type="button" class="job-action" data-action="download" data-url="/jobs/${jobIdEncoded}/optuna-db" title="Download Optuna study database"${hasStudy ? '' : ' disabled aria-disabled="true"'}>Download DB</button>`;
+                    const resultsButton = `<button type="button" class="job-action" data-action="download" data-url="/jobs/${jobIdEncoded}/download" title="Download partial results while the job runs">Download data</button>`;
+                    const dashboardButton = `<button type="button" class="job-action job-action--accent" data-action="open-dashboard" data-job-id="${jobIdEncoded}" title="Open the live Optuna dashboard">Open dashboard</button>`;
+                    trailingMarkup += `<div class="job-actions">${dbButton}${resultsButton}${dashboardButton}</div>`;
+                }
+
+                if (job.status === 'FAILED' && job.error) {
+                    trailingMarkup += `<pre>${escapeHtml(job.error)}</pre>`;
+                }
+
                 el.innerHTML = `
                     <strong>${escapeHtml(job.id)}</strong><br/>
                     study: ${studyFragment} &nbsp; status: <code>${escapeHtml(job.status)}</code> &nbsp; source: ${escapeHtml(job.filename)}<br/>
-                    created: ${escapeHtml(job.created_at)}
-                    ${job.study_name ? `&nbsp; <a href="/jobs/${jobIdEncoded}/optuna-db">download Optuna DB</a>` : ''}
-                    ${job.status === 'DONE' ? `&nbsp; <a href="/jobs/${jobIdEncoded}/download">download results</a>` : ''}
-                    ${job.status === 'RUNNING' ? `&nbsp; <a href="/jobs/${jobIdEncoded}/download">download partial results (job still running)</a>` : ''}
-                    ${(job.status === 'DONE' || job.status === 'RUNNING') ? `&nbsp; <a href="#" class="dashboard-link" data-job-id="${jobIdEncoded}">open dashboard</a>` : ''}
-                    ${job.status === 'FAILED' && job.error ? `<pre>${escapeHtml(job.error)}</pre>` : ''}
+                    ${createdLineParts.join(' ')}
+                    ${trailingMarkup}
                 `;
                 jobsDiv.appendChild(el);
             });
@@ -847,16 +920,41 @@
             if (!(target instanceof HTMLElement)) {
                 return;
             }
-            if (!target.classList.contains('dashboard-link')) {
+
+            const action = target.dataset.action || (target.classList.contains('dashboard-link') ? 'open-dashboard' : null);
+            if (!action || target.hasAttribute('disabled')) {
                 return;
             }
+
+            if (action === 'download') {
+                event.preventDefault();
+                const url = target.dataset.url;
+                if (url) {
+                    window.location.href = url;
+                }
+                return;
+            }
+
+            if (action !== 'open-dashboard') {
+                return;
+            }
+
             event.preventDefault();
             const jobId = target.dataset.jobId;
             if (!jobId) {
                 return;
             }
+            const originalLabel = target.textContent || 'open dashboard';
             target.textContent = 'preparing dashboard…';
             target.classList.add('disabled');
+            const canDisable = 'disabled' in target;
+            if (canDisable) {
+                try {
+                    target.disabled = true;
+                } catch (_) {
+                    // ignore if not supported
+                }
+            }
             try {
                 const res = await fetch(`/jobs/${jobId}/dashboard`);
                 if (!res.ok) {
@@ -877,8 +975,15 @@
                 window.alert(`Unable to open dashboard: ${msgText}`);
                 msg.textContent = `Dashboard not ready: ${msgText}`;
             } finally {
-                target.textContent = 'open dashboard';
+                target.textContent = originalLabel;
                 target.classList.remove('disabled');
+                if (canDisable) {
+                    try {
+                        target.disabled = false;
+                    } catch (_) {
+                        // ignore
+                    }
+                }
             }
         });
     </script>
