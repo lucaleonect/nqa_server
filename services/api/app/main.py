@@ -5,7 +5,7 @@ import tempfile
 import uuid
 from typing import Dict, Optional, Sequence, cast
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from zipfile import ZipFile
 
@@ -71,6 +71,31 @@ def _resolve_study_dir(study_name: str) -> Optional[str]:
         return None
 
     return candidate
+
+
+def _sanitize_study_name(raw: Optional[str]) -> Optional[str]:
+    """Return a filesystem-friendly study name or None when unusable."""
+
+    if raw is None:
+        return None
+
+    cleaned = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in raw.strip())
+    cleaned = cleaned.strip("._-")
+    return cleaned or None
+
+
+def _display_study_name(meta: Dict[str, object]) -> Optional[str]:
+    """Determine the best study name to display to users."""
+
+    requested = meta.get("requested_study_name")
+    if isinstance(requested, str) and requested.strip():
+        return requested.strip()
+
+    fallback = meta.get("study_name")
+    if isinstance(fallback, str) and fallback.strip():
+        return fallback.strip()
+
+    return None
 
 
 def _optuna_db_response(study_name: str):
@@ -147,6 +172,7 @@ def _coerce_upload(value: Optional[UploadFile | Sequence[UploadFile]]) -> Option
 @app.post("/upload")
 async def upload(
     file: UploadFile = File(...),
+    study_name: Optional[str] = Form(None),
     h_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
     g_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
 ):
@@ -164,12 +190,32 @@ async def upload(
 
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(UPLOAD_ROOT, job_id)
-    os.makedirs(job_dir, exist_ok=True)
 
-    # All studies default to the job identifier and fixed Optuna settings.
-    study_name = job_id
-    study_dir = os.path.join(STUDY_ROOT, study_name)
-    os.makedirs(study_dir, exist_ok=True)
+    requested_study_name = (study_name or "").strip()
+    sanitised_study_name = _sanitize_study_name(requested_study_name) if requested_study_name else None
+
+    if requested_study_name and sanitised_study_name is None:
+        return JSONResponse({"error": "study name must include letters, numbers, dashes, dots or underscores"}, status_code=400)
+
+    if sanitised_study_name:
+        study_dir_candidate = _resolve_study_dir(sanitised_study_name)
+        if study_dir_candidate is None:
+            return JSONResponse({"error": "invalid study name"}, status_code=400)
+        if os.path.exists(study_dir_candidate):
+            return JSONResponse({"error": "study name already exists; choose a different name"}, status_code=409)
+        study_name_to_use = sanitised_study_name
+        study_dir = study_dir_candidate
+    else:
+        requested_study_name = None
+        study_name_to_use = job_id
+        study_dir = os.path.join(STUDY_ROOT, study_name_to_use)
+
+    try:
+        os.makedirs(study_dir, exist_ok=False)
+    except FileExistsError:
+        return JSONResponse({"error": "study name already exists; choose a different name"}, status_code=409)
+
+    os.makedirs(job_dir, exist_ok=True)
 
     dest = os.path.join(job_dir, "J.npy")
     try:
@@ -192,8 +238,10 @@ async def upload(
         return JSONResponse({"error": f"failed to save vector file: {e}"}, status_code=500)
 
     study_payload: Dict[str, object] = {
-        "study_name": study_name,
+        "study_name": study_name_to_use,
     }
+    if requested_study_name:
+        study_payload["requested_study_name"] = requested_study_name
 
     try:
         with open(os.path.join(job_dir, REQUEST_FILENAME), "w", encoding="utf-8") as f:
@@ -214,18 +262,27 @@ async def upload(
 def list_jobs():
     with SessionLocal() as db:
         jobs = db.query(Job).order_by(Job.created_at.desc()).all()
-        return [
-            {
-                "id": j.id,
-                "status": j.status.value,
-                "filename": j.filename,
-                "study_name": _read_study_request(j.id).get("study_name"),
-                "created_at": j.created_at.isoformat() + "Z",
-                "updated_at": j.updated_at.isoformat() + "Z",
-                "error": j.error,
-            }
-            for j in jobs
-        ]
+        payload = []
+        for j in jobs:
+            meta = _read_study_request(j.id)
+            study_name = meta.get("study_name")
+            if not isinstance(study_name, str) or not study_name.strip():
+                study_name = None
+            else:
+                study_name = study_name.strip()
+            payload.append(
+                {
+                    "id": j.id,
+                    "status": j.status.value,
+                    "filename": j.filename,
+                    "study_name": study_name,
+                    "study_display_name": _display_study_name(meta),
+                    "created_at": j.created_at.isoformat() + "Z",
+                    "updated_at": j.updated_at.isoformat() + "Z",
+                    "error": j.error,
+                }
+            )
+        return payload
 
 
 @app.get("/jobs/{job_id}")
@@ -235,11 +292,17 @@ def job_status(job_id: str):
         if not j:
             return JSONResponse({"error": "not found"}, status_code=404)
         request_meta = _read_study_request(job_id)
+        study_name = request_meta.get("study_name")
+        if isinstance(study_name, str) and study_name.strip():
+            study_name = study_name.strip()
+        else:
+            study_name = None
         return {
             "id": j.id,
             "status": j.status.value,
             "filename": j.filename,
-            "study_name": request_meta.get("study_name"),
+            "study_name": study_name,
+            "study_display_name": _display_study_name(request_meta),
             "created_at": j.created_at.isoformat() + "Z",
             "updated_at": j.updated_at.isoformat() + "Z",
             "error": j.error,
@@ -265,11 +328,6 @@ def download_results(job_id: str):
                     arc = os.path.relpath(fp, j.result_dir)
                     z.write(fp, arc)
         return FileResponse(tmp_zip, filename=f"results_{job_id}.zip")
-
-
-@app.get("/studies/{study_name}/optuna-db")
-def download_optuna_db(study_name: str):
-    return _optuna_db_response(study_name)
 
 
 @app.get("/jobs/{job_id}/optuna-db")

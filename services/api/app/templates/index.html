@@ -91,6 +91,11 @@
             border-radius: 4px;
         }
 
+        .study-id {
+            color: #57606a;
+            font-size: 0.85rem;
+        }
+
         @media (max-width: 620px) {
             body {
                 margin: 1rem;
@@ -116,6 +121,10 @@
                 g vector (.npy, optional)
                 <input type="file" name="g_vector" accept=".npy" />
             </label>
+            <label>
+                Study name (optional)
+                <input type="text" name="study_name" placeholder="choose a unique name" />
+            </label>
             <p class="hint">Leave optional vectors blank for zero fields. Studies run with default Optuna settings.</p>
         </fieldset>
 
@@ -131,6 +140,18 @@
         const jobsDiv = document.getElementById('jobs');
         const msg = document.getElementById('msg');
 
+        const escapeHtml = (value) => {
+            if (value === undefined || value === null) {
+                return '';
+            }
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        };
+
         const maybeDeleteEmptyFile = (form, formData, name) => {
             const input = form.querySelector(`input[name="${name}"]`);
             if (!input) return;
@@ -145,16 +166,25 @@
             const data = await res.json();
             jobsDiv.innerHTML = '';
             data.forEach(job => {
+                const displayName = job.study_display_name || job.study_name || '';
+                const escapedDisplay = escapeHtml(displayName);
+                const fallbackName = job.study_display_name && job.study_name && job.study_display_name !== job.study_name
+                    ? ` <span class="study-id">(id: ${escapeHtml(job.study_name)})</span>`
+                    : '';
+                const studyFragment = displayName
+                    ? `<code>${escapedDisplay}</code>${fallbackName}`
+                    : '<em>assigned automatically</em>';
+                const jobIdEncoded = encodeURIComponent(job.id);
                 const el = document.createElement('div');
                 el.className = 'job';
                 el.innerHTML = `
-                    <strong>${job.id}</strong><br/>
-                    study: <code>${job.study_name}</code> &nbsp; status: <code>${job.status}</code> &nbsp; source: ${job.filename}<br/>
-                    created: ${job.created_at}
-                    ${job.study_name ? `&nbsp; <a href="/jobs/${job.id}/optuna-db">download Optuna DB</a>` : ''}
-                    ${job.status === 'DONE' ? `&nbsp; <a href="/jobs/${job.id}/download">download results</a>` : ''}
-                    ${job.status === 'RUNNING' ? `&nbsp; <a href="/jobs/${job.id}/download">download partial results (job still running)</a>` : ''}
-                    ${job.status === 'FAILED' && job.error ? `<pre>${job.error}</pre>` : ''}
+                    <strong>${escapeHtml(job.id)}</strong><br/>
+                    study: ${studyFragment} &nbsp; status: <code>${escapeHtml(job.status)}</code> &nbsp; source: ${escapeHtml(job.filename)}<br/>
+                    created: ${escapeHtml(job.created_at)}
+                    ${job.study_name ? `&nbsp; <a href="/jobs/${jobIdEncoded}/optuna-db">download Optuna DB</a>` : ''}
+                    ${job.status === 'DONE' ? `&nbsp; <a href="/jobs/${jobIdEncoded}/download">download results</a>` : ''}
+                    ${job.status === 'RUNNING' ? `&nbsp; <a href="/jobs/${jobIdEncoded}/download">download partial results (job still running)</a>` : ''}
+                    ${job.status === 'FAILED' && job.error ? `<pre>${escapeHtml(job.error)}</pre>` : ''}
                 `;
                 jobsDiv.appendChild(el);
             });
@@ -166,6 +196,15 @@
             const formData = new FormData(form);
             maybeDeleteEmptyFile(form, formData, 'h_vector');
             maybeDeleteEmptyFile(form, formData, 'g_vector');
+            const rawName = formData.get('study_name');
+            if (typeof rawName === 'string') {
+                const trimmed = rawName.trim();
+                if (!trimmed) {
+                    formData.delete('study_name');
+                } else {
+                    formData.set('study_name', trimmed);
+                }
+            }
 
             msg.textContent = 'Submitting…';
             const res = await fetch('/upload', { method: 'POST', body: formData });

@@ -6,6 +6,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 ## Responsibilities
 
 - Validate and store user uploads (`J.npy`, optional `h_vector.npy`, `g_vector.npy`).
+- Accept optional user-supplied study names, ensure uniqueness, and record them for downstream services.
 - Persist solver metadata (`study_name`) to `study_request.json` alongside the matrix data and seed an empty study directory for downstream services.
 - Maintain job records (`QUEUED` → `RUNNING` → `DONE`/`FAILED`) in the `jobs` table.
 - Serve a lightweight HTML dashboard (`/`) for manual interactions.
@@ -42,8 +43,8 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 | Method & Path | Description | Request | Response |
 |---------------|-------------|---------|----------|
 | `GET /` | HTML upload form rendered from `templates/index.html`. | – | HTML page with fields for matrix uploads; studies run with built-in Optuna defaults. |
-| `POST /upload` | Accepts a multipart upload containing the problem matrices. | Fields: `file` (required `.npy` for `J`), `h_vector`, `g_vector` (optional `.npy`). | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. |
-| `GET /jobs` | List jobs ordered by `created_at DESC`. | – | JSON array with `id`, `status`, `filename`, `study_name`, `created_at`, `updated_at`, `error`. Timestamps are ISO strings with `Z` suffix. |
+| `POST /upload` | Accepts a multipart upload containing the problem matrices. | Fields: `file` (required `.npy` for `J`), `h_vector`, `g_vector` (optional `.npy`), `study_name` (optional unique string). | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. Conflicting names raise `409`. |
+| `GET /jobs` | List jobs ordered by `created_at DESC`. | – | JSON array with `id`, `status`, `filename`, `study_name`, `study_display_name`, `created_at`, `updated_at`, `error`. Timestamps are ISO strings with `Z` suffix. |
 | `GET /jobs/{job_id}` | Retrieve one job. | – | Same fields as the list entry, or `404` JSON `{ "error": "not found" }`. |
 | `GET /jobs/{job_id}/download` | Package solver results for a completed job. | – | When the job is `DONE` (or still `RUNNING` but producing files), returns a ZIP archive built on the fly from `<result_dir>`. Otherwise `400` with reason. |
 | `GET /jobs/{job_id}/optuna-db` | Convenience wrapper to fetch the Optuna database for the job's study. | – | Resolves the underlying study and returns the SQLite file or mirrors the errors from the study endpoint. |
@@ -53,7 +54,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 ### Study Request Metadata
 
 - Metadata is normalised and written to `<DATA_ROOT>/jobs/<job_id>/study_request.json`.
-- `study_name` values default to the job ID to guarantee uniqueness. The current UI does not expose an override; custom runs can still edit the JSON directly before the scheduler picks up the job.
+- `study_name` values default to the job ID to guarantee uniqueness. When users supply `study_name` in the form payload, it is sanitised, deduplicated against existing studies, and stored alongside `requested_study_name` (the original value for UI display).
 - Additional solver hyperparameters currently rely on the defaults packaged with `nqa/master.py`; exposing them via the API would require future changes.
 
 
