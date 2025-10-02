@@ -56,6 +56,7 @@ class StudyRequest(BaseModel):
     g_vector: Optional[List[float]] = Field(None, description="Optional transverse field")
     study_name: Optional[str] = Field(None, description="Custom identifier for the Optuna study")
     cuda_device: Optional[int] = Field(None, description="Override CUDA device index")
+    energy_shift: float = Field(0.0, description="Constant energy offset added to the objective")
     study_args: Dict[str, Union[int, float]] = Field(default_factory=dict, description="Additional study arguments")
 
     @field_validator("study_args", mode="before")
@@ -184,6 +185,9 @@ def _build_command(
         cmd.extend(["--h_vector_path", str(h_path)])
     if g_path is not None:
         cmd.extend(["--g_vector_path", str(g_path)])
+
+    if request.energy_shift is not None:
+        cmd.extend(["--energy_shift", str(request.energy_shift)])
 
     cuda_device = request.cuda_device if request.cuda_device is not None else DEFAULT_CUDA_DEVICE
     if cuda_device is not None:

@@ -132,6 +132,13 @@ def _build_solver_payload(job: dict) -> dict:
     if isinstance(study_args, dict) and study_args:
         payload["study_args"] = study_args
 
+    energy_shift = study_request.get("energy_shift")
+    if energy_shift is not None:
+        try:
+            payload["energy_shift"] = float(energy_shift)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("energy_shift must be numeric") from exc
+
     vector = _load_vector(h_path)
     if vector is not None:
         payload["h_vector"] = vector.tolist()

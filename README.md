@@ -1,7 +1,5 @@
 # Neural Quantum Annealing Platform
 
-![Preview of the web interface showing the NQA upload form](docs/ui-preview.svg)
-
 This repository packages a Neural Quantum Annealing (NQA) workflow into a set of containerised services.  It accepts Sherrington–Kirkpatrick style Ising instances (`J`, optional `h`/`g` vectors), schedules them through a GPU-enabled solver, and exposes a web/API surface for submitting jobs and downloading results.  All runtime state (inputs, results, metadata) is persisted inside Docker volumes so the whole system can be launched with a single `docker compose up`.
 
 This server is designed to run on a machine with a single GPU and be easily deployable.

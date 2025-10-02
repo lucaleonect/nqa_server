@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser(description="Neural Quantum Annealer.")
 parser.add_argument("--J_matrix_path", type=str, default=None)
 parser.add_argument("--h_vector_path", type=str, default=None)
 parser.add_argument("--g_vector_path", type=str, default=None)
+parser.add_argument("--energy_shift", type=float, default=0.0)
 parser.add_argument("--db_storage_path", type=str, default=None)
 parser.add_argument("--study_name", type=str, default=None)
 parser.add_argument("--num_trials", type=int, default=100)
@@ -65,6 +66,7 @@ default_args = {
     "dbqs_param_dtype": "complex",
     "mcmc_num_thermalization_steps": 2**7,
     "dbqs_num_hidden_layers": args.dbqs_num_hidden_layers,
+    "energy_shift": args.energy_shift,
 }
 if args.h_vector_path is not None:
     default_args["h_vector_path"] = args.h_vector_path

@@ -1,4 +1,5 @@
 import inspect
+import io
 import json
 import logging
 import multiprocessing
@@ -17,8 +18,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from zipfile import ZipFile
 
+import numpy as np
+
 from .db import Base, SessionLocal, engine
 from .models import Job, JobStatus
+from .qubo import QUBO_to_Ising
 
 try:
     import optuna_dashboard
@@ -655,17 +659,37 @@ def _coerce_upload(value: Optional[UploadFile | Sequence[UploadFile]]) -> Option
 
 @app.post("/upload")
 async def upload(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile | Sequence[UploadFile]] = File(None),
+    qubo_matrix: Optional[UploadFile | Sequence[UploadFile]] = File(None),
     study_name: Optional[str] = Form(None),
     study_args_raw: Optional[str] = Form(None, alias="study_args"),
+    energy_shift: Optional[str] = Form("0"),
     h_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
     g_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
 ):
     # Normalise optional inputs that may arrive as lists or other sentinel values
+    file = _coerce_upload(file)
+    qubo_matrix = _coerce_upload(qubo_matrix)
     h_vector = _coerce_upload(h_vector)
     g_vector = _coerce_upload(g_vector)
-    if not file.filename.endswith(".npy"):
-        return JSONResponse({"error": "Only .npy files accepted"}, status_code=400)
+
+    if file is None and qubo_matrix is None:
+        return JSONResponse({"error": "Upload either a J matrix or a QUBO matrix"}, status_code=400)
+
+    if file is not None and qubo_matrix is not None:
+        return JSONResponse({"error": "Provide only one of J matrix or QUBO matrix"}, status_code=400)
+
+    if file is not None and not file.filename.endswith(".npy"):
+        return JSONResponse({"error": "Only .npy files accepted for the J matrix"}, status_code=400)
+
+    if qubo_matrix is not None and not qubo_matrix.filename.endswith(".npy"):
+        return JSONResponse({"error": "QUBO matrix must be a .npy file"}, status_code=400)
+
+    if qubo_matrix is not None and h_vector is not None:
+        return JSONResponse(
+            {"error": "Do not include an h_vector when uploading a QUBO matrix; it is derived automatically."},
+            status_code=400,
+        )
 
     for optional_file, field_name in ((h_vector, "h_vector"), (g_vector, "g_vector")):
         if optional_file is None:
@@ -677,6 +701,11 @@ async def upload(
         parsed_study_args = _parse_study_args(study_args_raw)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
+
+    try:
+        energy_shift_value = float(energy_shift) if energy_shift not in (None, "") else 0.0
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "energy_shift must be numeric"}, status_code=400)
 
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(UPLOAD_ROOT, job_id)
@@ -709,28 +738,72 @@ async def upload(
 
     os.makedirs(job_dir, exist_ok=True)
 
-    dest = os.path.join(job_dir, "J.npy")
-    try:
-        file.file.seek(0)
-        with open(dest, "wb") as out:
-            shutil.copyfileobj(file.file, out)
-    except Exception as e:
-        return JSONResponse({"error": f"failed to save file: {e}"}, status_code=500)
+    source_filename: str
+    input_format: str
 
-    try:
+    if qubo_matrix is not None:
+        try:
+            qubo_matrix.file.seek(0)
+            raw_bytes = qubo_matrix.file.read()
+        except Exception as exc:
+            return JSONResponse({"error": f"failed to read QUBO upload: {exc}"}, status_code=500)
+
+        try:
+            qubo_array = np.load(io.BytesIO(raw_bytes), allow_pickle=False)
+        except Exception as exc:
+            return JSONResponse({"error": f"failed to load QUBO matrix: {exc}"}, status_code=400)
+
+        try:
+            j_matrix, derived_h, derived_shift = QUBO_to_Ising(qubo_array)
+        except AssertionError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": f"failed to convert QUBO matrix: {exc}"}, status_code=400)
+
+        try:
+            np.save(os.path.join(job_dir, "J.npy"), j_matrix)
+            np.save(os.path.join(job_dir, "h_vector.npy"), derived_h)
+            with open(os.path.join(job_dir, "qubo_matrix.npy"), "wb") as out:
+                out.write(raw_bytes)
+        except Exception as exc:
+            return JSONResponse({"error": f"failed to persist derived matrices: {exc}"}, status_code=500)
+
+        source_filename = qubo_matrix.filename
+        input_format = "qubo"
+        energy_shift_value = float(derived_shift)
+    else:
+        assert file is not None  # for type checkers
+        dest = os.path.join(job_dir, "J.npy")
+        try:
+            file.file.seek(0)
+            with open(dest, "wb") as out:
+                shutil.copyfileobj(file.file, out)
+        except Exception as exc:
+            return JSONResponse({"error": f"failed to save file: {exc}"}, status_code=500)
+
         if h_vector is not None:
-            h_vector.file.seek(0)
-            with open(os.path.join(job_dir, "h_vector.npy"), "wb") as out:
-                shutil.copyfileobj(h_vector.file, out)
-        if g_vector is not None:
+            try:
+                h_vector.file.seek(0)
+                with open(os.path.join(job_dir, "h_vector.npy"), "wb") as out:
+                    shutil.copyfileobj(h_vector.file, out)
+            except Exception as exc:
+                return JSONResponse({"error": f"failed to save vector file: {exc}"}, status_code=500)
+
+        source_filename = file.filename
+        input_format = "ising"
+
+    if g_vector is not None:
+        try:
             g_vector.file.seek(0)
             with open(os.path.join(job_dir, "g_vector.npy"), "wb") as out:
                 shutil.copyfileobj(g_vector.file, out)
-    except Exception as e:
-        return JSONResponse({"error": f"failed to save vector file: {e}"}, status_code=500)
+        except Exception as exc:
+            return JSONResponse({"error": f"failed to save vector file: {exc}"}, status_code=500)
 
     study_payload: Dict[str, object] = {
         "study_name": study_name_to_use,
+        "input_format": input_format,
+        "energy_shift": energy_shift_value,
     }
     if parsed_study_args:
         study_payload["study_args"] = parsed_study_args
@@ -743,7 +816,7 @@ async def upload(
     except Exception as e:
         return JSONResponse({"error": f"failed to save study request: {e}"}, status_code=500)
 
-    job = Job(id=job_id, filename=file.filename, status=JobStatus.QUEUED, result_dir=study_dir)
+    job = Job(id=job_id, filename=source_filename, status=JobStatus.QUEUED, result_dir=study_dir)
     with SessionLocal() as db:
         db.add(job)
         db.commit()
