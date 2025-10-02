@@ -71,7 +71,7 @@ docker compose up
 open http://localhost:8000
 ```
 
-The solver container is exposed on `http://localhost:8081`; the scheduler reaches it via the internal Docker network (`http://solver:8081`).  PostgreSQL listens on `localhost:5432` using the credentials in `.env`.
+The solver container is exposed on `http://localhost:8081`; the scheduler reaches it via the internal Docker network (`http://solver:8081`).  PostgreSQL listens on `localhost:5432` using the credentials in `.env`.  When Optuna Dashboard support is enabled the API also binds `http://localhost:8001` (configurable) to serve the live study visualisation.
 
 
 ## Configuration Reference
@@ -85,8 +85,12 @@ The solver container is exposed on `http://localhost:8081`; the scheduler reache
 | `NQA_MASTER_SCRIPT` | `/nqa/nqa/master.py` | solver | Path to the Optuna driver launched by the solver service. |
 | `NQA_PYTHON_BIN` | `<sys.executable>` | solver | Override interpreter used to run the Optuna driver (defaults to container Python). |
 | `NQA_DEFAULT_CUDA_DEVICE` | unset | solver | If defined, appended as `--cuda_device` and `CUDA_VISIBLE_DEVICES` when the job lacks explicit GPU selection. |
+| `OPTUNA_DASHBOARD_PORT`, `OPTUNA_DASHBOARD_BIND_HOST`, `OPTUNA_DASHBOARD_PATH`, `OPTUNA_DASHBOARD_ALLOW_ORIGIN` | `8001`, `0.0.0.0`, `/`, unset | api | Control how the embedded Optuna Dashboard server is spawned (port/bind address/base path/CORS websocket origin). |
+| `HPO_DEFAULT_*` | see `.env` | api | Override the default study arguments surfaced in the upload form (`num_trials`, annealing bounds, SGD ranges, etc.). |
 
 > For a deeper dive into each service’s configuration knobs and API surface, see the files under `docs/`.
+
+The repository ships with a populated `.env` that seeds the web upload form and API defaults; adjust the `HPO_DEFAULT_*` values to change the Optuna search ranges presented to users.
 
 
 ## Job Lifecycle

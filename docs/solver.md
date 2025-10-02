@@ -9,6 +9,7 @@ The solver service now accepts problem instances directly in the HTTP request bo
 - Persist inputs as `.npy` files inside a fresh study directory under `DATA_ROOT/studies/`.
 - Construct an Optuna command targeting `nqa/master.py` with deterministic arguments and optional GPU selection.
 - Append `--energy_shift` when the request specifies an offset so downstream tools can report energies on the original scale.
+- Merge optional `study_args` values into the CLI invocation after enforcing types and minima.
 - Capture stdout/stderr (tails limited to 4,000 characters) and surface them in the HTTP response.
 - Return the resolved study identifier and on-disk location to the caller.
 
@@ -39,11 +40,15 @@ The solver service now accepts problem instances directly in the HTTP request bo
   "g_vector": [...],           // optional
   "energy_shift": 0.0,        // optional float (defaults to zero)
   "study_name": "custom-id",  // optional string, sanitized to [A-Za-z0-9._-]
-  "cuda_device": 0             // optional, overrides global default
+  "cuda_device": 0,            // optional, overrides global default
+  "study_args": {             // optional Optuna CLI overrides passed through to master.py
+    "num_trials": 200,
+    "mcmc_num_samples_max": 64
+  }
 }
 ```
 
-All numeric arrays are interpreted as lists of floats.  Omit `h_vector` and/or `g_vector` to default to zero fields.  The solver verifies `J_matrix` is square and that optional vectors have the matching length before dispatching Optuna.  Hyperparameters such as trial counts and per-trial runtime currently use the defaults baked into `nqa/master.py`.
+All numeric arrays are interpreted as lists of floats.  Omit `h_vector` and/or `g_vector` to default to zero fields.  The solver verifies `J_matrix` is square and that optional vectors have the matching length before dispatching Optuna.  Hyperparameters such as trial counts and per-trial runtime use the defaults baked into `nqa/master.py` unless callers override them via the `study_args` object.
 
 ### Response Schema
 

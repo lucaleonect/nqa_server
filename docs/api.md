@@ -9,6 +9,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 - Convert QUBO uploads into Ising form (`J`, derived `h`) and persist the associated energy shift so downstream services report energies on the original scale.
 - Accept optional user-supplied study names, ensure uniqueness, and record them for downstream services.
 - Persist solver metadata (`study_name`) to `study_request.json` alongside the matrix data and seed an empty study directory for downstream services.
+- Resolve default solver hyperparameters from environment variables so the HTML form reflects deployment-specific Optuna search ranges.
 - Maintain job records (`QUEUED` → `RUNNING` → `DONE`/`FAILED`) in the `jobs` table.
 - Serve a lightweight HTML dashboard (`/`) for manual interactions.
 - Package solver outputs into a ZIP archive on demand.
@@ -31,6 +32,11 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 |----------|----------|---------|---------|
 | `DATABASE_URL` | ✔ | _none_ | SQLAlchemy connection string to PostgreSQL (`postgresql+psycopg2://user:pass@host:5432/db`). |
 | `DATA_ROOT` | ✖ | `/data` | Mount point of the shared volume containing `jobs/` and `studies/`. |
+| `OPTUNA_DASHBOARD_PORT`, `OPTUNA_DASHBOARD_BIND_HOST`, `OPTUNA_DASHBOARD_PATH` | ✖ | `8001`, `0.0.0.0`, `/` | Control how the embedded Optuna Dashboard is exposed. Port maps through docker-compose; path rewrites the served base URL when reverse-proxying. |
+| `OPTUNA_DASHBOARD_ALLOW_ORIGIN` | ✖ | unset | Optional WebSocket origin allowlist for cross-origin dashboards (mirrors Optuna Dashboard's `allow_websocket_origin`). |
+| `HPO_DEFAULT_*` | ✖ | see `.env` | Pattern of environment keys (e.g. `HPO_DEFAULT_NUM_TRIALS=200`) that override the defaults surfaced in the upload form and forwarded to the solver. |
+
+The dashboard settings are only applied when `optuna-dashboard` is available; otherwise the API logs a message and keeps the upload flow operational.  Adjust the `HPO_DEFAULT_*` entries in the environment (or `.env`) to change the pre-populated Optuna search space without modifying the code.
 
 
 ## Directory Usage
