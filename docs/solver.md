@@ -1,111 +1,130 @@
 # Solver Service (`services/solver`)
 
-The solver service hosts the Neural Quantum Annealer (NQA) runtime behind a simple HTTP facade.  It receives job IDs from the scheduler, resolves them to files on the shared volume, and invokes `nqa/worker.py` with the appropriate CLI arguments.  The service is designed to run on a CUDA-capable host and bundles all required Python dependencies inside the container.
+The solver service now accepts problem instances directly in the HTTP request body and drives Optuna-based hyperparameter searches by launching `nqa/master.py`.  Each request supplies a coupling matrix `J` and optional vectors `h` and `g`; the service persists these arrays to `/data/studies/<study_id>/inputs/`, spawns the Optuna runner, and returns truncated logs once execution completes.
 
 
 ## Responsibilities
 
-- Validate job directories and required inputs (`J.npy`).
-- Load optional CLI argument overrides from `<DATA_ROOT>/jobs/<job_id>/cli_args.json`.
-- Construct a deterministic subprocess command targeting `nqa/worker.py`.
-- Ensure result directories exist and serve as the subprocess working directory.
-- Capture stdout/stderr (tail truncated to 4 000 chars) and surface them in the HTTP response.
-- Translate non-zero exit codes into structured HTTP 500 responses so the scheduler can persist meaningful error messages.
+- Validate that `J_matrix` is square and that optional vectors match its dimension.
+- Persist inputs as `.npy` files inside a fresh study directory under `DATA_ROOT/studies/`.
+- Construct an Optuna command targeting `nqa/master.py` with deterministic arguments and optional GPU selection.
+- Capture stdout/stderr (tails limited to 4,000 characters) and surface them in the HTTP response.
+- Return the resolved study identifier and on-disk location to the caller.
 
 
 ## Container Image
 
 - **Dockerfile**: `services/solver/Dockerfile`
 - **Base**: `nvcr.io/nvidia/jax:25.08-py3` (CUDA-enabled JAX runtime)
-- **Runtime command**: `uvicorn app.main:app --host 0.0.0.0 --port 8081`
+- **Runtime command**: `uvicorn nqa.main:app --host 0.0.0.0 --port 8081`
 - **Ports**: `8081/tcp`
-- **Dependencies installed**: requirements from `services/solver/requirements.txt` (FastAPI, uvicorn, Optuna, pytest utilities, matplotlib, etc.).
-- **Application layout inside container**: `/nqa/app` (FastAPI service) and `/nqa/nqa` (JAX solver package).
+- **Dependencies installed**: `requirements.txt` inside `services/solver` (FastAPI, uvicorn, Optuna, matplotlib, pytest helpers, etc.).
+- **Layout inside container**: project code is copied into `/nqa`; the FastAPI module lives at `/nqa/nqa/main.py`, and the Optuna runner is `/nqa/nqa/master.py`.
 
 
 ## API Endpoints
 
-| Method & Path | Description | Response |
-|---------------|-------------|----------|
-| `GET /health` | Simple readiness endpoint. | `{ "status": "ready" }` |
-| `POST /run` | Execute a job. Request body: `{ "job_id": "<uuid>" }`. | `200 OK`: `{ "status": "ok", "stdout": <tail>, "stderr": <tail> }`.  `500`: `{ "detail": { "error": "…", "stdout": "…", "stderr": "…" } }` or a string describing the failure. |
+| Method & Path | Description |
+|---------------|-------------|
+| `GET /health` | Readiness probe. Returns `{ "status": "ready" }`. |
+| `POST /run` | Launch an Optuna study. Request and response schemas are detailed below. |
 
-`stdout`/`stderr` tails are appended to aid debugging without transferring entire logs.  Full artefacts remain on disk under `/data/results/<job_id>`.
+### `POST /run` Request Schema
+
+```json
+{
+  "J_matrix": [[...], [...]],
+  "h_vector": [...],           // optional
+  "g_vector": [...],           // optional
+  "study_name": "custom-id",  // optional string, sanitized to [A-Za-z0-9._-]
+  "cuda_device": 0             // optional, overrides global default
+}
+```
+
+All numeric arrays are interpreted as lists of floats.  Omit `h_vector` and/or `g_vector` to default to zero fields.  The solver verifies `J_matrix` is square and that optional vectors have the matching length before dispatching Optuna.  Hyperparameters such as trial counts and per-trial runtime currently use the defaults baked into `nqa/master.py`.
+
+### Response Schema
+
+On success the service responds with:
+
+```json
+{
+  "status": "ok",
+  "stdout": "…tail…",
+  "stderr": "…tail…",
+  "study_id": "study_0123abcd",
+  "study_path": "/data/studies/study_0123abcd"
+}
+```
+
+`stdout` and `stderr` contain the last 4,000 characters of the respective streams.  The full Optuna study (database, per-trial directories, and worker artefacts) lives under the reported `study_path`.
+
+Failures raise an HTTP 400 for validation errors or 500 when the subprocess exits non-zero.  The error payload mirrors the previous behaviour: `{ "detail": { "error": "…", "stdout": "…", "stderr": "…" } }`.
 
 
 ## Environment Variables
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `DATA_ROOT` | `/data` | Root path for the shared volume. Must contain `jobs` and `results` subdirectories. |
-| `NQA_WORKER_SCRIPT` | `/nqa/nqa/worker.py` | Path to the solver CLI entrypoint. Useful when testing custom branches or alternate runners. |
-| `NQA_PYTHON_BIN` | runtime Python | Interpreter used to launch the worker (e.g., `/opt/conda/bin/python`). |
-| `NQA_DEFAULT_CUDA_DEVICE` | unset | If provided, appended to the command via `--cuda_device <value>` and exported as `CUDA_VISIBLE_DEVICES` when the job arguments do not supply one. |
+| `DATA_ROOT` | `/data` | Root path where studies are written (`/data/studies/<id>`). |
+| `NQA_MASTER_SCRIPT` | `/nqa/nqa/master.py` | Path to the Optuna driver invoked by the solver. Override when testing custom builds. |
+| `NQA_PYTHON_BIN` | runtime Python | Interpreter used to spawn `master.py`. Useful if multiple Python installations exist inside the container. |
+| `NQA_DEFAULT_CUDA_DEVICE` | unset | When provided, appended as `--cuda_device` and exported as `CUDA_VISIBLE_DEVICES` if the request omits `cuda_device`. |
 
-The scheduler’s request does not include any additional metadata.  Solver behaviour is therefore driven entirely by the files present under `<DATA_ROOT>/jobs/<job_id>`.
+The service also creates `DATA_ROOT` on startup to ensure a writable destination for study outputs.
 
 
-## Command Construction Details
+## Execution Flow
 
-1. Resolve paths using `pathlib.Path.resolve()`.  The solver guards against directory traversal by verifying that job directories sit underneath `DATA_ROOT`.
-2. Required file: `J.npy`. Missing files raise an HTTP 404.
-3. Optional files: `h_vector.npy`, `g_vector.npy`, `cli_args.json`.
-4. CLI arguments are iterated in sorted order for deterministic command lines.  Booleans become `--flag` or `--no-flag`; other values are stringified.
-5. If the user-specified CLI contains `--save_path`, it is honoured. Otherwise `--save_path <DATA_ROOT>/results/<job_id>` is appended to keep outputs co-located.
-6. CUDA device handling:
-   - If `cli_args.json` already sets `cuda_device`, no changes are made.
-   - If `NQA_DEFAULT_CUDA_DEVICE` is set, both `--cuda_device` and `CUDA_VISIBLE_DEVICES` are injected so JAX binds to the intended GPU.
-7. Subprocess execution occurs via `subprocess.run` with `cwd` pointing to the results directory and `capture_output=True`.
+1. **Validation**: The payload is parsed via Pydantic to ensure the matrix is present and optional vectors/cuda overrides, when provided, have valid types.
+2. **Normalisation**: Arrays are converted to `numpy.float64`, ensuring shapes are compatible.
+3. **Study Directory**: A sanitized or autogenerated identifier (UUID-backed) is resolved to `DATA_ROOT/studies/<study_id>`.  Inputs are saved as `.npy` files inside `inputs/`.
+4. **Command Assembly**: The service constructs `python <master.py> --J_matrix_path … --study_name <relative path> …`.  The `study_name` passed to `master.py` uses a relative path that ultimately points to `/data/studies/<study_id>`.
+5. **Execution**: `subprocess.run` launches the command with `cwd` set to the directory containing `master.py`. `CUDA_VISIBLE_DEVICES` is exported when a device index is selected.
+6. **Result Handling**: On completion, stdout/stderr tails are captured and returned with the study metadata.
 
 
 ## Error Semantics
 
-- Exit code `0`: HTTP 200 with truncated logs.
-- Non-zero exit code: HTTP 500 with a structured payload containing the exit code and trailing stderr/stdout text.
-- Missing worker script or input files: HTTP 500 / 404 respectively.
-- JSON decode errors in `cli_args.json`: HTTP 400 with details about the parse failure.
+- **400**: malformed JSON, non-square matrices, or mismatched vector lengths.
+- **500**: missing `master.py`, failed process spawn, or non-zero exit code.  The response includes truncated logs for quick triage.
 
-The scheduler records the `detail` field in the database so operators can diagnose failures without logging into the solver container.
-
-
-## Working with `nqa/`
-
-- `nqa/worker.py` defines the command-line interface consumed by the solver.  Ensure new flags maintain backward compatibility with the API’s form definitions.
-- `nqa/master.py` and the `nqa/tests/` suite remain available for standalone experimentation.
-- GPU-related utilities (e.g., `nqa/cuda_check.py`) can help verify that devices are enumerated correctly from within the container.
+The caller is responsible for inspecting the files written under `study_path` (`optuna_db.db`, `test_<trial>/`, etc.) for additional diagnostics.
 
 
 ## Local Development & Testing
 
-1. Install requirements: `pip install -r services/solver/requirements.txt` (requires CUDA-compatible environment for full functionality).
-2. Start the API: `uvicorn app.main:app --reload --port 8081` from `services/solver`.
-3. Set `DATA_ROOT` to a directory containing the expected job structure:
+1. Install dependencies: `pip install -r services/solver/requirements.txt`.
+2. Export `DATA_ROOT` to a writable directory, e.g. `export DATA_ROOT=$(pwd)/tmp-data`.
+3. Start the service: `uvicorn nqa.main:app --reload --host 0.0.0.0 --port 8081` from `services/solver`.
+4. Issue a request (example with `httpie`):
+
    ```bash
-   export DATA_ROOT=$(pwd)/../../shared-data
-   mkdir -p "$DATA_ROOT/jobs/$JOB" "$DATA_ROOT/results/$JOB"
-   cp J.npy "$DATA_ROOT/jobs/$JOB/J.npy"
-   ```
-4. Trigger the endpoint with `curl`:
-   ```bash
-   curl -X POST http://localhost:8081/run \
-        -H 'Content-Type: application/json' \
-        -d '{"job_id": "'$JOB'"}'
+   http POST :8081/run \
+     J_matrix:='[[0, -1], [-1, 0]]'
    ```
 
-Run solver unit tests with:
+   or with `curl`:
+
+   ```bash
+   curl -X POST http://localhost:8081/run \
+     -H 'Content-Type: application/json' \
+     -d '{"J_matrix": [[0, -1], [-1, 0]]}'
+   ```
+
+5. Inspect `/data/studies/<study_id>/` (or your custom `DATA_ROOT`) for solver artefacts.
+
+Solver unit tests remain accessible via:
 
 ```bash
 cd services/solver/nqa
 python -m pytest
 ```
 
-Some tests expect a GPU; for CPU-only environments, configure JAX appropriately (e.g., `export XLA_FLAGS=--xla_force_host_platform_device_count=1`).
-
 
 ## Operational Notes
 
-- The container requests `gpus: all` in `docker-compose.yml`.  Adjust to a specific count or device list when deploying in shared GPU environments.
-- Standard output includes a line such as `[solver] running job <id>: python /nqa/nqa/worker.py …` for traceability.
-- Subprocess stdout/stderr is flushed after completion; long-running jobs should stream their own progress to files inside the results directory if live feedback is needed.
-- Keep an eye on disk usage within the shared volume; results can be large depending on solver configuration.
-
+- The Docker Compose configuration requests `gpus: all`.  Adjust to limit resource usage in shared environments.
+- Log lines look like `[solver] running study study_<id>: python /nqa/nqa/master.py …` for traceability.
+- Optuna studies can grow quickly; monitor disk usage under `/data/studies` and prune when appropriate.
+- To resume a study, submit the same `study_name`; `master.py` will reopen the existing Optuna database and continue sampling.

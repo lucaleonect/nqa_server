@@ -31,12 +31,15 @@ services:
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
       SOLVER_URL: "http://solver:8081"
+      DATA_ROOT: /data
+    volumes:
+      - shared-data:/data
 
   solver:
     build: ./services/solver
     environment:
       DATA_ROOT: /data
-      NQA_WORKER_SCRIPT: /nqa/nqa/worker.py
+      NQA_MASTER_SCRIPT: /nqa/nqa/master.py
     gpus: all
     volumes:
       - shared-data:/data

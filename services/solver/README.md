@@ -74,18 +74,14 @@ Mutually exclusive options:
 ## Important CLI Flags (Single Run)
 
 - `--cuda_device`: GPU index to use (sets `CUDA_VISIBLE_DEVICES`).
-- `--max_runtime`: Soft cap; run will early‑stop if projected time exceeds this.
-- `--save_path`: Where to write results and plots; directory will be created.
-- `--vqa_num_annealing_steps`: Schedule resolution. Combine with `--vqa_*_steps` repeats.
-- `--vqa_use_catalyst` / `--vqa_catalyst_field_scale`: Toggle and scale the Y catalyst.
-- `--vqa_no_annealing`: If set, runs standard SR at a fixed coupling point.
+- `--max_runtime`: Soft cap; the run halts when projected duration exceeds this (default 6 hours).
+- `--save_path`: Destination directory for logs, arrays, and plots; created if missing.
+- `--vqa_num_annealing_steps`, `--vqa_num_warmup_steps`, `--vqa_num_updates_per_step`, `--vqa_num_finetuning_steps`: Control how often the schedule points repeat.
+- `--vqa_annealing_field_scale`, `--vqa_catalyst_field_scale`, `--vqa_no_catalyst`: Scale or disable the driver/catalyst terms in the Hamiltonian.
 - `--sgd_learning_rate`, `--sgd_momentum`: Optimizer hyperparameters (Optax SGD).
-- `--sr_method`: One of `auto`, `SR`, `minSR`.
-- `--sr_diagonal_shift`: Stabilizer for FIM/NTK inverses.
-- `--dbqs_num_hidden_layers`, `--dbqs_unit_density_per_layer`: DBQS size.
-- `--dbqs_param_dtype`: `float` or `complex` (default `complex`).
-- `--mcmc_num_samples`, `--mcmc_num_sweep_steps`, `--mcmc_num_thermalization_steps`: Sampler budget.
-- `--mcmc_persistent_markov_chains`: Persistent chain endpoints per step.
+- `--sr_method`, `--sr_diagonal_shift`, `--sr_prefactor`: Natural-gradient solver choices and regularisation.
+- `--dbqs_num_hidden_layers`, `--dbqs_unit_density_per_layer`, `--dbqs_param_dtype`, `--dbqs_use_bias`: DBQS architecture and parameter dtype/bias toggles.
+- `--mcmc_num_samples`, `--mcmc_num_chains`, `--mcmc_num_sweep_steps`, `--mcmc_num_thermalization_steps`, `--mcmc_disable_persistent_markov_chains`: Sampler budget and persistence controls.
 
 Run `python -m nqa.worker -h` to see the full list and defaults.
 
@@ -102,9 +98,6 @@ cd nqa
 python master.py \
 	--J_matrix_path ../J.npy \
 	--study_name sk_demo \
-	--num_trials 10 \
-	--num_workers 1 \
-	--trial_max_runtime $((30*60))
 ```
 
 Notes:
