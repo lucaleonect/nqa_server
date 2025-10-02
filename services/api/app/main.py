@@ -8,11 +8,13 @@ import tempfile
 import threading
 import urllib.parse
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Sequence, cast
+from typing import Callable, Dict, Optional, Sequence, Tuple, Union, cast
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
 from zipfile import ZipFile
 
 from .db import Base, SessionLocal, engine
@@ -40,6 +42,171 @@ logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title="nqa-server")
+
+templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+
+
+@dataclass(frozen=True)
+class _StudyArgSpec:
+    label: str
+    kind: str
+    default: Union[int, float]
+    minimum: Optional[float]
+
+
+_STUDY_ARG_SPECS: "OrderedDict[str, _StudyArgSpec]" = OrderedDict(
+    (
+        (
+            "num_trials",
+            _StudyArgSpec("Number of trials", "int", 100, 1),
+        ),
+        (
+            "num_workers",
+            _StudyArgSpec("Number of parallel workers", "int", 1, 1),
+        ),
+        (
+            "trial_max_runtime",
+            _StudyArgSpec("Trial max runtime (seconds)", "int", 60 * 30, 1),
+        ),
+        (
+            "vqa_num_annealing_steps_min",
+            _StudyArgSpec("VQA annealing steps (min)", "int", 1000, 1),
+        ),
+        (
+            "vqa_num_annealing_steps_max",
+            _StudyArgSpec("VQA annealing steps (max)", "int", 10000, 1),
+        ),
+        (
+            "vqa_num_updates_per_step_min",
+            _StudyArgSpec("VQA updates per step (min)", "int", 1, 1),
+        ),
+        (
+            "vqa_num_updates_per_step_max",
+            _StudyArgSpec("VQA updates per step (max)", "int", 5, 1),
+        ),
+        (
+            "vqa_annealing_field_scale_min",
+            _StudyArgSpec("Annealing field scale (min)", "float", 1e-1, 0.0),
+        ),
+        (
+            "vqa_annealing_field_scale_max",
+            _StudyArgSpec("Annealing field scale (max)", "float", 1e1, 0.0),
+        ),
+        (
+            "vqa_catalyst_field_scale_min",
+            _StudyArgSpec("Catalyst field scale (min)", "float", 1e-1, 0.0),
+        ),
+        (
+            "vqa_catalyst_field_scale_max",
+            _StudyArgSpec("Catalyst field scale (max)", "float", 1e1, 0.0),
+        ),
+        (
+            "sgd_learning_rate_min",
+            _StudyArgSpec("SGD learning rate (min)", "float", 1e-3, 0.0),
+        ),
+        (
+            "sgd_learning_rate_max",
+            _StudyArgSpec("SGD learning rate (max)", "float", 1e0, 0.0),
+        ),
+        (
+            "sgd_momentum_min",
+            _StudyArgSpec("SGD momentum (min)", "float", 0.0, 0.0),
+        ),
+        (
+            "sgd_momentum_max",
+            _StudyArgSpec("SGD momentum (max)", "float", 0.9, 0.0),
+        ),
+        (
+            "sr_diagonal_shift_min",
+            _StudyArgSpec("SR diagonal shift (min)", "float", 1e-9, 0.0),
+        ),
+        (
+            "sr_diagonal_shift_max",
+            _StudyArgSpec("SR diagonal shift (max)", "float", 1e-2, 0.0),
+        ),
+        (
+            "dbqs_num_hidden_layers",
+            _StudyArgSpec("DBQS hidden layers", "int", 2, 1),
+        ),
+        (
+            "dbqs_unit_density_per_layer_min",
+            _StudyArgSpec("DBQS unit density per layer (min)", "float", 0.25, 0.0),
+        ),
+        (
+            "dbqs_unit_density_per_layer_max",
+            _StudyArgSpec("DBQS unit density per layer (max)", "float", 4.0, 0.0),
+        ),
+        (
+            "mcmc_num_samples_min",
+            _StudyArgSpec("MCMC samples (min)", "int", 2**3, 1),
+        ),
+        (
+            "mcmc_num_samples_max",
+            _StudyArgSpec("MCMC samples (max)", "int", 2**6, 1),
+        ),
+        (
+            "mcmc_num_sweep_steps_min",
+            _StudyArgSpec("MCMC sweep steps (min)", "int", 2**2, 1),
+        ),
+        (
+            "mcmc_num_sweep_steps_max",
+            _StudyArgSpec("MCMC sweep steps (max)", "int", 2**6, 1),
+        ),
+    )
+)
+
+
+_ALLOWED_STUDY_ARGS: Dict[str, Tuple[str, Optional[float]]] = {
+    key: (spec.kind, spec.minimum)
+    for key, spec in _STUDY_ARG_SPECS.items()
+}
+
+
+def _parse_study_args(raw: Optional[str]) -> Dict[str, object]:
+    if raw is None:
+        return {}
+
+    text = raw.strip()
+    if not text:
+        return {}
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"study arguments must be valid JSON: {exc.msg}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("study arguments must be a JSON object with key/value pairs")
+
+    parsed: Dict[str, object] = {}
+    for key, value in payload.items():
+        if key not in _ALLOWED_STUDY_ARGS:
+            raise ValueError(f"unsupported study argument: {key}")
+        expected_type, min_value = _ALLOWED_STUDY_ARGS[key]
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            raise ValueError(f"{key} must be a number")
+        if expected_type == "int":
+            if isinstance(value, float):
+                if not value.is_integer():
+                    raise ValueError(f"{key} must be an integer")
+                converted = int(value)
+            else:
+                try:
+                    converted = int(value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"{key} must be an integer") from exc
+        else:
+            try:
+                converted = float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{key} must be a number") from exc
+        if min_value is not None and converted < min_value:
+            raise ValueError(f"{key} must be at least {min_value}")
+        parsed[key] = converted
+
+    return parsed
 
 
 _dashboard_available = optuna_dashboard is not None and hasattr(optuna_dashboard, "run_server")
@@ -458,10 +625,27 @@ def _resolve_job_study_name(job: Job) -> Optional[str]:
     return None
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    with open(os.path.join(os.path.dirname(__file__), "templates", "index.html"), "r", encoding="utf-8") as f:
-        return HTMLResponse(f.read())
+@app.get("/")
+async def index(request: Request):
+    study_arg_specs = [
+        {
+            "key": key,
+            "label": spec.label,
+            "kind": spec.kind,
+            "default": spec.default,
+            "minimum": spec.minimum,
+            "default_text": f"{spec.default:g}" if isinstance(spec.default, float) else str(spec.default),
+            "step": "1" if spec.kind == "int" else "any",
+        }
+        for key, spec in _STUDY_ARG_SPECS.items()
+    ]
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "study_arg_specs": study_arg_specs,
+        },
+    )
 
 
 def _coerce_upload(value: Optional[UploadFile | Sequence[UploadFile]]) -> Optional[UploadFile]:
@@ -490,6 +674,7 @@ def _coerce_upload(value: Optional[UploadFile | Sequence[UploadFile]]) -> Option
 async def upload(
     file: UploadFile = File(...),
     study_name: Optional[str] = Form(None),
+    study_args_raw: Optional[str] = Form(None),
     h_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
     g_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
 ):
@@ -504,6 +689,11 @@ async def upload(
             continue
         if not optional_file.filename.endswith(".npy"):
             return JSONResponse({"error": f"{field_name} must be a .npy file"}, status_code=400)
+
+    try:
+        parsed_study_args = _parse_study_args(study_args_raw)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(UPLOAD_ROOT, job_id)
@@ -559,6 +749,8 @@ async def upload(
     study_payload: Dict[str, object] = {
         "study_name": study_name_to_use,
     }
+    if parsed_study_args:
+        study_payload["study_args"] = parsed_study_args
     if requested_study_name:
         study_payload["requested_study_name"] = requested_study_name
 

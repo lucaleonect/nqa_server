@@ -44,7 +44,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 | Method & Path | Description | Request | Response |
 |---------------|-------------|---------|----------|
 | `GET /` | HTML upload form rendered from `templates/index.html`. | – | HTML page with fields for matrix uploads; studies run with built-in Optuna defaults. |
-| `POST /upload` | Accepts a multipart upload containing the problem matrices. | Fields: `file` (required `.npy` for `J`), `h_vector`, `g_vector` (optional `.npy`), `study_name` (optional unique string). | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. Conflicting names raise `409`. |
+| `POST /upload` | Accepts a multipart upload containing the problem matrices. | Fields: `file` (required `.npy` for `J`), `h_vector`, `g_vector` (optional `.npy`), `study_name` (optional unique string), `study_args` (optional JSON object mirroring the solver CLI flags, e.g. `{ "num_trials": 100, "mcmc_num_samples_min": 8 }`). The bundled HTML form exposes dedicated inputs for each of these values, pre-populated with the defaults defined in `nqa/master.py`. | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. Conflicting names raise `409`. |
 | `GET /jobs` | List jobs ordered by `created_at DESC`. | – | JSON array with `id`, `status`, `filename`, `study_name`, `study_display_name`, `created_at`, `updated_at`, `error`. Timestamps are ISO strings with `Z` suffix. |
 | `GET /jobs/{job_id}` | Retrieve one job. | – | Same fields as the list entry, or `404` JSON `{ "error": "not found" }`. |
 | `GET /jobs/{job_id}/download` | Package solver results for a completed job. | – | When the job is `DONE` (or still `RUNNING` but producing files), returns a ZIP archive built on the fly from `<result_dir>`. Otherwise `400` with reason. |
@@ -57,7 +57,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 
 - Metadata is normalised and written to `<DATA_ROOT>/jobs/<job_id>/study_request.json`.
 - `study_name` values default to the job ID to guarantee uniqueness. When users supply `study_name` in the form payload, it is sanitised, deduplicated against existing studies, and stored alongside `requested_study_name` (the original value for UI display).
-- Additional solver hyperparameters currently rely on the defaults packaged with `nqa/master.py`; exposing them via the API would require future changes.
+- Additional solver hyperparameters can be overridden by including a `study_args` JSON object during upload. Allowed keys mirror the CLI flags exposed by `nqa/master.py` (for example, `num_trials`, `num_workers`, the `vqa_*` bounds, `sgd_*` bounds, `sr_diagonal_shift_*`, `dbqs_*`, and `mcmc_*`). Invalid keys or value types are rejected during upload. The web UI renders a textbox for every supported parameter so users can inspect and tweak the solver defaults without crafting JSON by hand.
 
 
 ## Database Schema

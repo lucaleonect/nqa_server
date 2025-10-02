@@ -52,6 +52,12 @@
             background: #fff;
         }
 
+        .study-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.75rem 1rem;
+        }
+
         button {
             align-self: flex-start;
             padding: 0.55rem 1.2rem;
@@ -125,7 +131,29 @@
                 Study name (optional)
                 <input type="text" name="study_name" placeholder="choose a unique name" />
             </label>
-            <p class="hint">Leave optional vectors blank for zero fields. Studies run with default Optuna settings.</p>
+            <p class="hint">Leave optional vectors blank for zero fields. Use study parameters below to override Optuna defaults.</p>
+        </fieldset>
+
+        <fieldset>
+            <legend>Study parameters</legend>
+            <p class="hint">Defaults mirror the solver's CLI. Adjust values to tune Optuna and annealer behaviour.</p>
+            <div class="study-grid">
+                {% for spec in study_arg_specs %}
+                <label>
+                    {{ spec.label }}
+                    <input type="number"
+                        class="study-arg-input"
+                        name="study_arg_{{ spec.key }}"
+                        data-arg="{{ spec.key }}"
+                        data-type="{{ spec.kind }}"
+                        value="{{ spec.default_text }}"
+                        step="{{ spec.step }}"
+                        {% if spec.minimum is not none %}min="{{ spec.minimum }}"{% endif %}
+                    />
+                </label>
+                {% endfor %}
+            </div>
+            <input type="hidden" name="study_args" id="studyArgsField" />
         </fieldset>
 
         <button type="submit">Start study</button>
@@ -161,6 +189,52 @@
             }
         };
 
+        const packStudyArgs = (form) => {
+            const hidden = form.querySelector('#studyArgsField');
+            if (!hidden) {
+                return { ok: true };
+            }
+
+            const inputs = form.querySelectorAll('.study-arg-input');
+            const payload = {};
+            let hasValues = false;
+
+            for (const input of inputs) {
+                const key = input.dataset.arg;
+                const type = input.dataset.type;
+                const raw = input.value.trim();
+                if (!key || !type) {
+                    continue;
+                }
+                if (!raw) {
+                    continue;
+                }
+                const numeric = Number(raw);
+                if (!Number.isFinite(numeric)) {
+                    return { ok: false, error: `${key} must be numeric` };
+                }
+                if (type === 'int' && !Number.isInteger(numeric)) {
+                    return { ok: false, error: `${key} must be an integer` };
+                }
+                const minAttr = input.getAttribute('min');
+                if (minAttr !== null && minAttr !== '') {
+                    const minValue = Number(minAttr);
+                    if (Number.isFinite(minValue) && numeric < minValue) {
+                        return { ok: false, error: `${key} must be ≥ ${minAttr}` };
+                    }
+                }
+                payload[key] = type === 'int' ? Math.trunc(numeric) : numeric;
+                hasValues = true;
+            }
+
+            if (hasValues) {
+                hidden.value = JSON.stringify(payload);
+            } else {
+                hidden.value = '';
+            }
+            return { ok: true };
+        };
+
         async function refresh() {
             const res = await fetch('/jobs');
             const data = await res.json();
@@ -194,6 +268,12 @@
         document.getElementById('uploadForm').addEventListener('submit', async (event) => {
             event.preventDefault();
             const form = event.target;
+            const packResult = packStudyArgs(form);
+            if (!packResult.ok) {
+                msg.textContent = `Study arguments error: ${packResult.error}`;
+                return;
+            }
+
             const formData = new FormData(form);
             maybeDeleteEmptyFile(form, formData, 'h_vector');
             maybeDeleteEmptyFile(form, formData, 'g_vector');
@@ -205,6 +285,11 @@
                 } else {
                     formData.set('study_name', trimmed);
                 }
+            }
+
+            const hidden = form.querySelector('#studyArgsField');
+            if (hidden && hidden.value.trim() === '') {
+                formData.delete('study_args');
             }
 
             msg.textContent = 'Submitting…';

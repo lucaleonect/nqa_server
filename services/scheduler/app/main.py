@@ -128,6 +128,10 @@ def _build_solver_payload(job: dict) -> dict:
         study_name = os.path.basename(result_dir) if result_dir else job_id
     payload["study_name"] = study_name
 
+    study_args = study_request.get("study_args")
+    if isinstance(study_args, dict) and study_args:
+        payload["study_args"] = study_args
+
     vector = _load_vector(h_path)
     if vector is not None:
         payload["h_vector"] = vector.tolist()

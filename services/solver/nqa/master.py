@@ -13,9 +13,31 @@ parser.add_argument("--g_vector_path", type=str, default=None)
 parser.add_argument("--db_storage_path", type=str, default=None)
 parser.add_argument("--study_name", type=str, default=None)
 parser.add_argument("--num_trials", type=int, default=100)
+parser.add_argument("--vqa_num_annealing_steps_min", type=int, default=1000)
+parser.add_argument("--vqa_num_annealing_steps_max", type=int, default=10000)
+parser.add_argument("--vqa_num_updates_per_step_min", type=int, default=1)
+parser.add_argument("--vqa_num_updates_per_step_max", type=int, default=5)
+parser.add_argument("--vqa_annealing_field_scale_min", type=float,default=1e-1)
+parser.add_argument("--vqa_annealing_field_scale_max", type=float,default=1e1)
+parser.add_argument("--vqa_catalyst_field_scale_min", type=float,default=1e-1)
+parser.add_argument("--vqa_catalyst_field_scale_max", type=float,default=1e1)
+parser.add_argument("--sgd_learning_rate_min", type=float,default=1e-3)
+parser.add_argument("--sgd_learning_rate_max", type=float,default=1e0)
+parser.add_argument("--sgd_momentum_min", type=float,default=0)
+parser.add_argument("--sgd_momentum_max", type=float,default=0.9)
+parser.add_argument("--sr_diagonal_shift_min", type=float,default=1e-9)
+parser.add_argument("--sr_diagonal_shift_max", type=float,default=1e-2)
+parser.add_argument("--dbqs_num_hidden_layers", type=int,default=2)
+parser.add_argument("--dbqs_unit_density_per_layer_min", type=float,default=0.25)
+parser.add_argument("--dbqs_unit_density_per_layer_max", type=float,default=4.0)
+parser.add_argument("--mcmc_num_samples_min", type=int,default=2**3)
+parser.add_argument("--mcmc_num_samples_max", type=int,default=2**6)
+parser.add_argument("--mcmc_num_sweep_steps_min", type=int,default=2**2)
+parser.add_argument("--mcmc_num_sweep_steps_max", type=int,default=2**6)
 parser.add_argument("--num_workers", type=int, default=1)
 parser.add_argument("--cuda_device", type=int, default=0)
 parser.add_argument("--trial_max_runtime", type=int, default=60 * 30)
+
 args = parser.parse_args()
 
 if args.J_matrix_path is None:
@@ -42,23 +64,23 @@ default_args = {
     "vqa_num_finetuning_steps": 100,
     "dbqs_param_dtype": "complex",
     "mcmc_num_thermalization_steps": 2**7,
+    "dbqs_num_hidden_layers": args.dbqs_num_hidden_layers,
 }
 if args.h_vector_path is not None:
     default_args["h_vector_path"] = args.h_vector_path
 if args.g_vector_path is not None:
     default_args["g_vector_path"] = args.g_vector_path
 trial_args_settings = {
-    "vqa_num_annealing_steps": ("int", 1e3, 1e6, "log"),
-    "vqa_num_updates_per_step": ("int", 1, 5, "linear"),
-    "vqa_annealing_field_scale": ("float", 1e-1, 1e1, "log"),
-    "vqa_catalyst_field_scale": ("float", 1e-1, 1e1, "log"),
-    "sgd_learning_rate": ("float", 1e-4, 1e0, "log"),
-    "sgd_momentum": ("float", 0.0, 0.9, "linear"),
-    "sr_diagonal_shift": ("float", 1e-9, 1e0, "log"),
-    "dbqs_num_hidden_layers": ("int", 1, 3, "linear"),
-    "dbqs_unit_density_per_layer": ("float", 0.25, 4, "log"),
-    "mcmc_num_samples": ("int", 2**3, 2**7, "log"),
-    "mcmc_num_sweep_steps": ("int", 2**2, 2**7, "log"),
+    "vqa_num_annealing_steps": ("int", args.vqa_num_annealing_steps_min, args.vqa_num_annealing_steps_max, "log"),
+    "vqa_num_updates_per_step": ("int", args.vqa_num_updates_per_step_min, args.vqa_num_updates_per_step_max, "linear"),
+    "vqa_annealing_field_scale": ("float", args.vqa_annealing_field_scale_min, args.vqa_annealing_field_scale_max, "log"),
+    "vqa_catalyst_field_scale": ("float", args.vqa_catalyst_field_scale_min, args.vqa_catalyst_field_scale_max, "log"),
+    "sgd_learning_rate": ("float", args.sgd_learning_rate_min, args.sgd_learning_rate_max, "log"),
+    "sgd_momentum": ("float", args.sgd_momentum_min, args.sgd_momentum_max, "linear"),
+    "sr_diagonal_shift": ("float", args.sr_diagonal_shift_min, args.sr_diagonal_shift_max, "log"),
+    "dbqs_unit_density_per_layer": ("float", args.dbqs_unit_density_per_layer_min, args.dbqs_unit_density_per_layer_max, "log"),
+    "mcmc_num_samples": ("int", args.mcmc_num_samples_min, args.mcmc_num_samples_max, "log"),
+    "mcmc_num_sweep_steps": ("int", args.mcmc_num_sweep_steps_min, args.mcmc_num_sweep_steps_max, "log"),
 }
 dynamic_args = {
     "target_energy": None,

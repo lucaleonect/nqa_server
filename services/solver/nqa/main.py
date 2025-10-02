@@ -2,12 +2,12 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 app = FastAPI(title="nqa-solver")
@@ -22,12 +22,78 @@ MASTER_ROOT = MASTER_SCRIPT.parent
 MASTER_STUDIES_ROOT = (MASTER_ROOT / "studies").resolve()
 
 
+_ALLOWED_STUDY_ARGS: Dict[str, Tuple[str, Optional[float]]] = {
+    "num_trials": ("int", 1),
+    "num_workers": ("int", 1),
+    "trial_max_runtime": ("int", 1),
+    "vqa_num_annealing_steps_min": ("int", 1),
+    "vqa_num_annealing_steps_max": ("int", 1),
+    "vqa_num_updates_per_step_min": ("int", 1),
+    "vqa_num_updates_per_step_max": ("int", 1),
+    "vqa_annealing_field_scale_min": ("float", 0.0),
+    "vqa_annealing_field_scale_max": ("float", 0.0),
+    "vqa_catalyst_field_scale_min": ("float", 0.0),
+    "vqa_catalyst_field_scale_max": ("float", 0.0),
+    "sgd_learning_rate_min": ("float", 0.0),
+    "sgd_learning_rate_max": ("float", 0.0),
+    "sgd_momentum_min": ("float", 0.0),
+    "sgd_momentum_max": ("float", 0.0),
+    "sr_diagonal_shift_min": ("float", 0.0),
+    "sr_diagonal_shift_max": ("float", 0.0),
+    "dbqs_num_hidden_layers": ("int", 1),
+    "dbqs_unit_density_per_layer_min": ("float", 0.0),
+    "dbqs_unit_density_per_layer_max": ("float", 0.0),
+    "mcmc_num_samples_min": ("int", 1),
+    "mcmc_num_samples_max": ("int", 1),
+    "mcmc_num_sweep_steps_min": ("int", 1),
+    "mcmc_num_sweep_steps_max": ("int", 1),
+}
+
+
 class StudyRequest(BaseModel):
     J_matrix: List[List[float]] = Field(..., description="Square coupling matrix")
     h_vector: Optional[List[float]] = Field(None, description="Optional longitudinal field")
     g_vector: Optional[List[float]] = Field(None, description="Optional transverse field")
     study_name: Optional[str] = Field(None, description="Custom identifier for the Optuna study")
     cuda_device: Optional[int] = Field(None, description="Override CUDA device index")
+    study_args: Dict[str, Union[int, float]] = Field(default_factory=dict, description="Additional study arguments")
+
+    @field_validator("study_args", mode="before")
+    @classmethod
+    def _sanitize_study_args(cls, value):
+        if value in (None, {}):
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("study_args must be a JSON object mapping argument names to values")
+
+        parsed: Dict[str, Union[int, float]] = {}
+        for key, raw in value.items():
+            if key not in _ALLOWED_STUDY_ARGS:
+                raise ValueError(f"unsupported study argument: {key}")
+            expected_type, min_value = _ALLOWED_STUDY_ARGS[key]
+            if raw is None:
+                continue
+            if isinstance(raw, bool):
+                raise ValueError(f"{key} must be a number")
+            if expected_type == "int":
+                if isinstance(raw, float):
+                    if not raw.is_integer():
+                        raise ValueError(f"{key} must be an integer")
+                    converted = int(raw)
+                else:
+                    try:
+                        converted = int(raw)
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError(f"{key} must be an integer") from exc
+            else:
+                try:
+                    converted = float(raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"{key} must be a number") from exc
+            if min_value is not None and converted < min_value:
+                raise ValueError(f"{key} must be at least {min_value}")
+            parsed[key] = converted
+        return parsed
 
     @model_validator(mode="after")
     def _vectors_need_square_matrix(cls, model):
@@ -122,6 +188,13 @@ def _build_command(
     cuda_device = request.cuda_device if request.cuda_device is not None else DEFAULT_CUDA_DEVICE
     if cuda_device is not None:
         cmd.extend(["--cuda_device", str(cuda_device)])
+
+    if request.study_args:
+        for key in sorted(request.study_args):
+            value = request.study_args[key]
+            if value is None:
+                continue
+            cmd.extend([f"--{key}", str(value)])
 
     return cmd
 
