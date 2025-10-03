@@ -784,24 +784,16 @@
                 el.className = 'job';
 
                 const createdLineParts = [`created: ${escapeHtml(job.created_at)}`];
-                if (job.status !== 'RUNNING') {
-                    const inlineLinks = [];
-                    if (job.study_name) {
-                        inlineLinks.push(`<a href="/jobs/${jobIdEncoded}/optuna-db">download Optuna DB</a>`);
-                    }
-                    if (job.status === 'DONE') {
-                        inlineLinks.push(`<a href="/jobs/${jobIdEncoded}/download">download results</a>`);
-                    }
-                    if (job.status === 'DONE') {
-                        inlineLinks.push(`<a href="#" class="dashboard-link" data-job-id="${jobIdEncoded}" data-action="open-dashboard">open dashboard</a>`);
-                    }
-                    if (inlineLinks.length > 0) {
-                        createdLineParts.push('&nbsp; ' + inlineLinks.join(' &nbsp; '));
-                    }
-                }
 
                 let trailingMarkup = '';
                 if (job.status === 'RUNNING') {
+                    const hasStudy = Boolean(job.study_name);
+                    const dbButton = `<button type="button" class="job-action" data-action="download" data-url="/jobs/${jobIdEncoded}/optuna-db" title="Download Optuna study database"${hasStudy ? '' : ' disabled aria-disabled="true"'}>Download DB</button>`;
+                    const resultsButton = `<button type="button" class="job-action" data-action="download" data-url="/jobs/${jobIdEncoded}/download" title="Download partial results while the job runs">Download data</button>`;
+                    const dashboardButton = `<button type="button" class="job-action job-action--accent" data-action="open-dashboard" data-job-id="${jobIdEncoded}" title="Open the live Optuna dashboard">Open dashboard</button>`;
+                    trailingMarkup += `<div class="job-actions">${dbButton}${resultsButton}${dashboardButton}</div>`;
+                }
+                if (job.status === 'DONE') {
                     const hasStudy = Boolean(job.study_name);
                     const dbButton = `<button type="button" class="job-action" data-action="download" data-url="/jobs/${jobIdEncoded}/optuna-db" title="Download Optuna study database"${hasStudy ? '' : ' disabled aria-disabled="true"'}>Download DB</button>`;
                     const resultsButton = `<button type="button" class="job-action" data-action="download" data-url="/jobs/${jobIdEncoded}/download" title="Download partial results while the job runs">Download data</button>`;
