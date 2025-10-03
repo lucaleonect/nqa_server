@@ -48,12 +48,7 @@ If you downloaded a zip, extract it and open the `NQA/Release` folder in your te
 ## Configure Environment Defaults
 The application reads connection details and solver defaults from `.env`.
 
-```bash
-cp .env.example .env    # If no .env exists yet
-# or edit the existing .env with your preferred credentials
-```
-
-At minimum review the PostgreSQL password and the Optuna defaults (`HPO_DEFAULT_*`). These settings appear in the upload form and API responses. The bundled defaults mirror presets tuned for a laptop-class GPU (RTX 3060 Mobile) targeting classical spin-glass and QUBO instances in the 300-400 variable range. For quantum ground-state workloads you will generally need to raise the sampling-related knobs (more samples, longer sweep steps, additional workers) to obtain high-fidelity approximations.
+Edit the checked-in `.env` to match your environment (it ships with working defaults so you can start immediately). At minimum review the PostgreSQL password and the Optuna defaults (`HPO_DEFAULT_*`). These settings appear in the upload form and API responses. The bundled defaults mirror presets tuned for a laptop-class GPU (RTX 3060 Mobile) targeting classical spin-glass and QUBO instances in the 300-400 variable range. For quantum ground-state workloads you will generally need to raise the sampling-related knobs (more samples, longer sweep steps, additional workers) to obtain high-fidelity approximations.
 
 ## Start the Platform (First Run)
 1. **Build the Docker images** – this downloads the base CUDA image and installs Python dependencies. The solver image can take several minutes to pull the first time.
@@ -67,6 +62,7 @@ At minimum review the PostgreSQL password and the Optuna defaults (`HPO_DEFAULT_
    Leave this terminal open while you use the system. When everything is ready you will see log lines announcing that the API is listening on port 8000.
 3. **Visit the web UI** – open a browser and navigate to `http://localhost:8000`.
    - Upload `.npy` matrices (Ising `J` with optional `h`/`g`, or QUBO `Q`).
+   - Optionally set a job name or target objective value to annotate the run.
    - Adjust Optuna search bounds or accept the defaults from `.env`.
    - Submit the job and monitor its status from the same page.
 
@@ -95,13 +91,13 @@ shared-data/
 │   ├── h_vector.npy
 │   ├── g_vector.npy
 │   └── study_request.json
-└── studies/<job_id>/
+└── studies/<study_name>/
     ├── optuna_db.db
     ├── test_<trial>/
     └── inputs/
 ```
 
-Jobs and studies share the same identifier, making it easy to match uploads with completed runs. When you download a finished job from the UI the zip contains the corresponding `studies/<job_id>` directory.
+By default the study directory is named after the job ID; supplying a custom study name in the upload form stores results under `studies/<your-name>`. When you download a finished job from the UI the zip contains the corresponding study directory.
 
 ## Architecture Overview
 At runtime four containers collaborate:

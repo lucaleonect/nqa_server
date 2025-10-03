@@ -8,6 +8,7 @@ The scheduler is a lightweight polling worker that bridges the database and the 
 - Poll the `jobs` table for the oldest `QUEUED` entry.
 - Atomically transition a job to `RUNNING` prior to execution.
 - Materialise the solver payload by loading `J.npy`, optional vectors, and `study_request.json` from `/data/jobs/<job_id>/`.
+- Carry forward annotations from the upload form—job names, target objective values, CUDA hints, and custom Optuna parameters—so downstream services see a consistent view of the request.
 - Validate matrix/vector shapes while constructing the payload; malformed files surface as `FAILED` jobs with diagnostic messages.
 - Invoke the solver service (`POST /run`) with the fully expanded Optuna request.
 - Handle HTTP/network failures and solver-side errors, downgrading jobs to `FAILED` with diagnostic text.
@@ -39,7 +40,7 @@ The scheduler is a lightweight polling worker that bridges the database and the 
 1. `SELECT_NEXT` retrieves the oldest queued job (`ORDER BY created_at ASC LIMIT 1`).
 2. If no job is found, the caller sleeps for four seconds; otherwise the loop continues after a two-second pause.
 3. Before contacting the solver, `MARK_RUNNING` sets the status to `RUNNING` and commits the transaction. This prevents duplicate scheduling when multiple worker instances run concurrently.
-4. The solver endpoint is called with `requests.post`. The payload contains the coupling matrix, optional vectors, study metadata, and CUDA preference required by `nqa/master.py`.
+4. The solver endpoint is called with `requests.post`. The payload contains the coupling matrix, optional vectors, study metadata (including any `study_args`/`target_objective_value`), the derived energy shift, and CUDA preferences required by `nqa/master.py`.
 5. Responses are interpreted as follows:
    - `response.ok == True`: the job is marked `DONE`, the raw response body is logged (truncated to 500 characters), and the loop proceeds.
    - Non-200 responses: the body is parsed (JSON preferred) via `_parse_solver_response()` to extract meaningful details. The job is marked `FAILED` with an error message truncated to 8 KB.
@@ -58,7 +59,7 @@ The outer `while True` handles database connectivity issues by sleeping four sec
 ## Interaction with the Solver
 
 - Endpoint constructed from `SOLVER_URL.rstrip('/') + '/run'`.
-- Request payload: JSON document with keys `J_matrix`, optional `h_vector`/`g_vector`, and the study metadata recorded by the API (`study_name`, falling back to the job ID when missing). Per-study hyperparameters such as Optuna trial counts come from the solver defaults.
+- Request payload: JSON document with keys `J_matrix`, optional `h_vector`/`g_vector`, and every metadata item captured by the API—`study_name` (defaults to the job ID), optional `job_name`, derived `input_format`, `energy_shift`, and any submitted `study_args` (including `target_objective_value`). Per-study hyperparameters continue to fall back to the solver defaults when unset.
 - Timeout: `SOLVER_TIMEOUT` if provided; otherwise the request may block until the solver responds.
 - Successful responses are logged verbatim (limited to 500 characters) to aid debugging and to capture solver stdout/stderr tails.
 - Errors are serialised to strings before being written to the database. When the solver returns a JSON object with `detail`/`error`/`stdout`/`stderr` keys, the scheduler normalises the text into a compact message.
@@ -88,6 +89,7 @@ Ensure a solver instance is reachable before starting the scheduler; otherwise e
 ## Observability
 
 - Logs are printed to stdout with `[scheduler]` prefixes. Use `docker compose logs scheduler` during operations.
+- When present, friendly job names are emitted alongside UUIDs in log lines to ease traceability.
 - Job transitions are recorded in the database (`status`, `error`, `updated_at`).  Querying via SQL is the authoritative source for system state.
 - The scheduler does not currently expose Prometheus metrics or health endpoints. When running multiple replicas, rely on container orchestrator liveness probes instead.
 

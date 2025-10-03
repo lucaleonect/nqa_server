@@ -8,6 +8,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 - Validate and store user uploads (`J.npy`, optional `h_vector.npy`, `g_vector.npy`) or full QUBO matrices.
 - Convert QUBO uploads into Ising form (`J`, derived `h`) and persist the associated energy shift so downstream services report energies on the original scale.
 - Accept optional user-supplied study names, ensure uniqueness, and record them for downstream services.
+- Capture optional job names and target objective hints for downstream services.
 - Persist solver metadata (`study_name`) to `study_request.json` alongside the matrix data and seed an empty study directory for downstream services.
 - Resolve default solver hyperparameters from environment variables so the HTML form reflects deployment-specific Optuna search ranges.
 - Maintain job records (`QUEUED` → `RUNNING` → `DONE`/`FAILED`) in the `jobs` table.
@@ -34,6 +35,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 | `DATA_ROOT` | ✖ | `/data` | Mount point of the shared volume containing `jobs/` and `studies/`. |
 | `OPTUNA_DASHBOARD_PORT`, `OPTUNA_DASHBOARD_BIND_HOST`, `OPTUNA_DASHBOARD_PATH` | ✖ | `8001`, `0.0.0.0`, `/` | Control how the embedded Optuna Dashboard is exposed. Port maps through docker-compose; path rewrites the served base URL when reverse-proxying. |
 | `OPTUNA_DASHBOARD_ALLOW_ORIGIN` | ✖ | unset | Optional WebSocket origin allowlist for cross-origin dashboards (mirrors Optuna Dashboard's `allow_websocket_origin`). |
+| `OPTUNA_DASHBOARD_PUBLIC_SCHEME`, `OPTUNA_DASHBOARD_PUBLIC_HOST`, `OPTUNA_DASHBOARD_PUBLIC_PORT` | ✖ | unset | Override the externally visible URL when the API sits behind a reverse proxy. |
 | `HPO_DEFAULT_*` | ✖ | see `.env` | Pattern of environment keys (e.g. `HPO_DEFAULT_NUM_TRIALS=200`) that override the defaults surfaced in the upload form and forwarded to the solver. |
 
 The dashboard settings are only applied when `optuna-dashboard` is available; otherwise the API logs a message and keeps the upload flow operational.  Adjust the `HPO_DEFAULT_*` entries in the environment (or `.env`) to change the pre-populated Optuna search space without modifying the code.
@@ -51,8 +53,8 @@ The dashboard settings are only applied when `optuna-dashboard` is available; ot
 | Method & Path | Description | Request | Response |
 |---------------|-------------|---------|----------|
 | `GET /` | HTML upload form rendered from `templates/index.html`. | – | HTML page with fields for matrix uploads; studies run with built-in Optuna defaults. |
-| `POST /upload` | Accepts a multipart upload containing the problem definition. | Fields: `file` (`.npy` for `J`), `qubo_matrix` (`.npy`), `h_vector`, `g_vector` (optional `.npy` when supplying `J` directly), `energy_shift` (optional float; ignored when a QUBO matrix is provided), `study_name` (optional unique string), `study_args` (optional JSON object mirroring the solver CLI flags, e.g. `{ "num_trials": 100, "mcmc_num_samples_min": 8 }`). Provide either `file` or `qubo_matrix`, not both. The bundled HTML form exposes dedicated inputs for these values, pre-populated with the defaults defined in `nqa/master.py`. | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. Conflicting names raise `409`. |
-| `GET /jobs` | List jobs ordered by `created_at DESC`. | – | JSON array with `id`, `status`, `filename`, `study_name`, `study_display_name`, `created_at`, `updated_at`, `error`. Timestamps are ISO strings with `Z` suffix. |
+| `POST /upload` | Accepts a multipart upload containing the problem definition. | Fields: `file` (`.npy` for `J`), `qubo_matrix` (`.npy`), `h_vector`, `g_vector` (optional `.npy` when supplying `J` directly), `energy_shift` (optional float; ignored when a QUBO matrix is provided), `job_name` (optional label shown in job lists), `target_objective_value` (optional float forwarded to the solver), `study_name` (optional unique string), `study_args` (optional JSON object mirroring the solver CLI flags, e.g. `{ "num_trials": 100, "mcmc_num_samples_min": 8 }`). Provide either `file` or `qubo_matrix`, not both. The bundled HTML form exposes dedicated inputs for these values, pre-populated with the defaults defined in `nqa/master.py`. | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. Conflicting names raise `409`. |
+| `GET /jobs` | List jobs ordered by `created_at DESC`. | – | JSON array with `id`, `name`, `status`, `filename`, `study_name`, `study_display_name`, `created_at`, `updated_at`, `error`. Timestamps are ISO strings with `Z` suffix. |
 | `GET /jobs/{job_id}` | Retrieve one job. | – | Same fields as the list entry, or `404` JSON `{ "error": "not found" }`. |
 | `GET /jobs/{job_id}/download` | Package solver results for a completed job. | – | When the job is `DONE` (or still `RUNNING` but producing files), returns a ZIP archive built on the fly from `<result_dir>`. Otherwise `400` with reason. |
 | `GET /jobs/{job_id}/optuna-db` | Convenience wrapper to fetch the Optuna database for the job's study. | – | Resolves the underlying study and returns the SQLite file or mirrors the errors from the study endpoint. |
@@ -65,6 +67,7 @@ The dashboard settings are only applied when `optuna-dashboard` is available; ot
 - Metadata is normalised and written to `<DATA_ROOT>/jobs/<job_id>/study_request.json`.
 - `study_name` values default to the job ID to guarantee uniqueness. When users supply `study_name` in the form payload, it is sanitised, deduplicated against existing studies, and stored alongside `requested_study_name` (the original value for UI display).
 - Additional solver hyperparameters can be overridden by including a `study_args` JSON object during upload. Allowed keys mirror the CLI flags exposed by `nqa/master.py` (for example, `num_trials`, `num_workers`, the `vqa_*` bounds, `sgd_*` bounds, `sr_diagonal_shift_*`, `dbqs_*`, and `mcmc_*`). Invalid keys or value types are rejected during upload. The web UI renders a textbox for every supported parameter so users can inspect and tweak the solver defaults without crafting JSON by hand.
+- Optional UI fields (`job_name`, `target_objective_value`) are stored alongside the derived `input_format`, `energy_shift`, and any `study_args` so the scheduler and solver can act on them without re-reading the upload form data.
 
 
 ## Database Schema
@@ -74,6 +77,7 @@ The dashboard settings are only applied when `optuna-dashboard` is available; ot
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `VARCHAR` (PK) | UUID generated on upload. |
+| `name` | `VARCHAR` | Optional friendly label supplied with the job upload. |
 | `status` | `ENUM('QUEUED','RUNNING','DONE','FAILED')` | Updated by API (initial) and scheduler. |
 | `filename` | `VARCHAR` | Original filename of the upload. |
 | `created_at` | `TIMESTAMP` | Defaults to `datetime.utcnow`. |

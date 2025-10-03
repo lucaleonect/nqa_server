@@ -59,7 +59,7 @@ This service packages that pipeline so API users only need to supply the input m
 }
 ```
 
-All numeric arrays are interpreted as lists of floats.  Omit `h_vector` and/or `g_vector` to default to zero fields.  The solver verifies `J_matrix` is square and that optional vectors have the matching length before dispatching Optuna.  Hyperparameters such as trial counts and per-trial runtime use the defaults baked into `nqa/master.py` unless callers override them via the `study_args` object.
+All numeric arrays are interpreted as lists of floats.  Omit `h_vector` and/or `g_vector` to default to zero fields.  The solver verifies `J_matrix` is square and that optional vectors have the matching length before dispatching Optuna.  Hyperparameters such as trial counts and per-trial runtime use the defaults baked into `nqa/master.py` unless callers override them via the `study_args` object.  Values like `target_objective_value` provided by the API are forwarded inside `study_args`, so custom clients should do the same if they need to tweak those knobs.
 
 ### Response Schema
 
