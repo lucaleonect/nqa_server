@@ -4,6 +4,34 @@ This repository packages a Neural Quantum Annealing (NQA) workflow into a set of
 
 This server is designed to run on a machine with a single GPU and be easily deployable.
 
+
+
+## Quick Start
+
+```bash
+git clone <repo-url>
+cd NQA/Release
+# Adjust credentials, ports, or solver defaults here if necessary
+cp .env.example .env   # if you keep a template, otherwise edit the existing .env
+# Build images (solver image pull can take several minutes the first time)
+docker compose build
+# Start the full stack
+docker compose up
+# Visit the web UI
+open http://localhost:8000
+```
+
+### UI Preview
+
+The built-in front-end accessible lets you upload matrices, track job progress, and jump into the live Optuna dashboard without leaving the browser.
+
+![Upload form in the web UI highlighting matrix inputs and solver defaults](docs/images/Screenshot_20251003_034207.png)
+
+![Job list view showing queued and running submissions with status badges](docs/images/Screenshot_20251003_034238.png)
+
+![Optuna dashboard embedded in the UI displaying trial metrics](docs/images/Screenshot_20251003_034333.png)
+
+
 ## High-Level Architecture
 
 ```
@@ -50,28 +78,6 @@ This server is designed to run on a machine with a single GPU and be easily depl
 1. Docker 24+ with the Compose plugin (`docker compose`).
 2. NVIDIA Container Toolkit (for GPU access inside the solver container) and a compatible driver/runtime for `nvcr.io/nvidia/jax:25.08-py3`.
 3. Optional: Python 3.11 environment if you want to run components locally outside Docker.
-
-
-## Quick Start
-
-```bash
-git clone <repo-url>
-cd NQA/Release
-
-# Adjust credentials, ports, or solver defaults here if necessary
-cp .env.example .env   # if you keep a template, otherwise edit the existing .env
-
-# Build images (solver image pull can take several minutes the first time)
-docker compose build
-
-# Start the full stack
-docker compose up
-
-# Visit the web UI
-open http://localhost:8000
-```
-
-The solver container is exposed on `http://localhost:8081`; the scheduler reaches it via the internal Docker network (`http://solver:8081`).  PostgreSQL listens on `localhost:5432` using the credentials in `.env`.  When Optuna Dashboard support is enabled the API also binds `http://localhost:8001` (configurable) to serve the live study visualisation.
 
 
 ## Configuration Reference
