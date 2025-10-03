@@ -53,7 +53,7 @@ cp .env.example .env    # If no .env exists yet
 # or edit the existing .env with your preferred credentials
 ```
 
-At minimum review the PostgreSQL password and the Optuna defaults (`HPO_DEFAULT_*`). These settings appear in the upload form and API responses.
+At minimum review the PostgreSQL password and the Optuna defaults (`HPO_DEFAULT_*`). These settings appear in the upload form and API responses. The bundled defaults mirror presets tuned for a laptop-class GPU (RTX 3060 Mobile) targeting classical spin-glass and QUBO instances in the 300-400 variable range. For quantum ground-state workloads you will generally need to raise the sampling-related knobs (more samples, longer sweep steps, additional workers) to obtain high-fidelity approximations.
 
 ## Start the Platform (First Run)
 1. **Build the Docker images** – this downloads the base CUDA image and installs Python dependencies. The solver image can take several minutes to pull the first time.

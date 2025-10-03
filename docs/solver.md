@@ -92,6 +92,11 @@ Failures raise an HTTP 400 for validation errors or 500 when the subprocess exit
 The service also creates `DATA_ROOT` on startup to ensure a writable destination for study outputs.
 
 
+## Default Presets and Expected Workloads
+
+The `HPO_DEFAULT_*` values shipped in `.env` are tuned for the developer's everyday rig: an RTX 3060 Mobile GPU handling classical spin-glass or QUBO problems with a few hundred spins (roughly 300-400 variables). These parameters strike a balance between turnaround time and solution quality on that hardware. When you target quantum ground-state studies or require tighter approximations, plan to scale up the sampling budget: larger trial counts, more MCMC samples, and longer sweep schedules so Optuna has enough runway to explore the space.
+
+
 ## Execution Flow
 
 1. **Validation**: The payload is parsed via Pydantic to ensure the matrix is present and optional vectors/cuda overrides, when provided, have valid types.
