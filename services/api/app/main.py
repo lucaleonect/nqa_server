@@ -20,6 +20,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from zipfile import ZipFile
 
+from sqlalchemy import inspect as sa_inspect, text
+
 import numpy as np
 
 from .db import Base, SessionLocal, engine
@@ -500,9 +502,30 @@ def _ensure_dashboard_server(storage_path: str, study_name: Optional[str]) -> Op
         return _dashboard_server
 
 
+def _ensure_job_name_column() -> None:
+    """Add the optional job name column when migrating from older schemas."""
+
+    try:
+        inspector = sa_inspect(engine)
+        columns = {column["name"] for column in inspector.get_columns("jobs")}
+    except Exception as exc:  # pragma: no cover - defensive logging only
+        logger.warning("failed to inspect jobs table: %s", exc)
+        return
+
+    if "name" in columns:
+        return
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN name TEXT"))
+    except Exception as exc:  # pragma: no cover - defensive logging only
+        logger.warning("unable to add name column to jobs table: %s", exc)
+
+
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
+    _ensure_job_name_column()
 
 
 # very small dependency helper
@@ -547,6 +570,25 @@ def _resolve_study_dir(study_name: str) -> Optional[str]:
         return None
 
     return candidate
+
+
+def _sanitize_job_name(raw: Optional[str]) -> Optional[str]:
+    """Return a normalised printable job name or ``None`` when absent."""
+
+    if raw is None:
+        return None
+
+    stripped = raw.strip()
+    if not stripped:
+        return None
+
+    cleaned = "".join(ch for ch in stripped if ch.isprintable())
+    normalised = " ".join(cleaned.split())
+    if not normalised:
+        raise ValueError("job name must include printable characters")
+    if len(normalised) > 120:
+        raise ValueError("job name must be at most 120 characters")
+    return normalised
 
 
 def _sanitize_study_name(raw: Optional[str]) -> Optional[str]:
@@ -668,6 +710,8 @@ async def upload(
     file: Optional[UploadFile | Sequence[UploadFile]] = File(None),
     qubo_matrix: Optional[UploadFile | Sequence[UploadFile]] = File(None),
     study_name: Optional[str] = Form(None),
+    job_name: Optional[str] = Form(None),
+    target_objective_value: Optional[str] = Form(None),
     study_args_raw: Optional[str] = Form(None, alias="study_args"),
     energy_shift: Optional[str] = Form("0"),
     h_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
@@ -714,8 +758,20 @@ async def upload(
     except (TypeError, ValueError):
         return JSONResponse({"error": "energy_shift must be numeric"}, status_code=400)
 
+    target_obj_value: Optional[float] = None
+    if target_objective_value not in (None, ""):
+        try:
+            target_obj_value = float(target_objective_value)
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "target_objective_value must be numeric"}, status_code=400)
+
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(UPLOAD_ROOT, job_id)
+
+    try:
+        sanitised_job_name = _sanitize_job_name(job_name)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
     requested_study_name = (study_name or "").strip()
     sanitised_study_name = _sanitize_study_name(requested_study_name) if requested_study_name else None
@@ -812,8 +868,13 @@ async def upload(
         "input_format": input_format,
         "energy_shift": energy_shift_value,
     }
-    if parsed_study_args:
-        study_payload["study_args"] = parsed_study_args
+    if sanitised_job_name:
+        study_payload["job_name"] = sanitised_job_name
+    final_study_args: Dict[str, object] = dict(parsed_study_args)
+    if target_obj_value is not None:
+        final_study_args["target_objective_value"] = target_obj_value
+    if final_study_args:
+        study_payload["study_args"] = final_study_args
     if requested_study_name:
         study_payload["requested_study_name"] = requested_study_name
 
@@ -823,7 +884,13 @@ async def upload(
     except Exception as e:
         return JSONResponse({"error": f"failed to save study request: {e}"}, status_code=500)
 
-    job = Job(id=job_id, filename=source_filename, status=JobStatus.QUEUED, result_dir=study_dir)
+    job = Job(
+        id=job_id,
+        name=sanitised_job_name,
+        filename=source_filename,
+        status=JobStatus.QUEUED,
+        result_dir=study_dir,
+    )
     with SessionLocal() as db:
         db.add(job)
         db.commit()
@@ -848,6 +915,7 @@ def list_jobs():
             payload.append(
                 {
                     "id": j.id,
+                    "name": j.name,
                     "status": j.status.value,
                     "filename": j.filename,
                     "study_name": study_name,
@@ -875,6 +943,7 @@ def job_status(job_id: str):
             study_name = None
         return {
             "id": j.id,
+            "name": j.name,
             "status": j.status.value,
             "filename": j.filename,
             "study_name": study_name,

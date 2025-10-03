@@ -381,7 +381,8 @@
             color: var(--code-text);
         }
 
-        .study-id {
+        .study-id,
+        .job-id {
             color: var(--muted);
             font-size: 0.85rem;
         }
@@ -482,6 +483,18 @@
             <p class="lead">Classical and Quantum Spin Glass Solver. <a href="https://github.com/lucaleonect/nqa_server" target="_blank" rel="noopener noreferrer">GitHub</a></p>
         </header>
         <form id="uploadForm">
+            <fieldset>
+                <legend>Job details</legend>
+                <label>
+                    Job name (optional)
+                    <input type="text" name="job_name" maxlength="120" placeholder="e.g. Benchmark run A" />
+                </label>
+                <label>
+                    Target objective value (optional)
+                    <input type="number" name="target_objective_value" step="any" placeholder="-1e5" />
+                </label>
+                <p class="hint">Displayed in the jobs list; up to 120 printable characters.</p>
+            </fieldset>
             <fieldset>
                 <legend>Transverse-field SK problem</legend>
                 <p class="hint math-hint">Provide the dense coupling matrix <code>J</code> together with optional longitudinal (<code>h</code>) and transverse (<code>g</code>) fields as .npy files. The solver minimises the transverse-field Sherrington–Kirkpatrick Hamiltonian:</p>
@@ -771,6 +784,10 @@
             const data = await res.json();
             jobsDiv.innerHTML = '';
             data.forEach(job => {
+                const jobName = typeof job.name === 'string' ? job.name.trim() : '';
+                const titleHtml = jobName
+                    ? `${escapeHtml(jobName)} <span class="job-id">(${escapeHtml(job.id)})</span>`
+                    : escapeHtml(job.id);
                 const displayName = job.study_display_name || job.study_name || '';
                 const escapedDisplay = escapeHtml(displayName);
                 const fallbackName = job.study_display_name && job.study_name && job.study_display_name !== job.study_name
@@ -806,7 +823,7 @@
                 }
 
                 el.innerHTML = `
-                    <strong>${escapeHtml(job.id)}</strong><br/>
+                    <strong>${titleHtml}</strong><br/>
                     study: ${studyFragment} &nbsp; status: <code>${escapeHtml(job.status)}</code> &nbsp; source: ${escapeHtml(job.filename)}<br/>
                     ${createdLineParts.join(' ')}
                     ${trailingMarkup}
@@ -862,7 +879,47 @@
                 }
             }
 
+            const jobNameInput = form.querySelector('input[name="job_name"]');
+            const targetObjInput = form.querySelector('input[name="target_objective_value"]');
             const formData = new FormData(form);
+            const jobNameValue = formData.get('job_name');
+            if (typeof jobNameValue === 'string') {
+                const trimmedJobName = jobNameValue.trim();
+                if (trimmedJobName.length === 0) {
+                    formData.delete('job_name');
+                } else if (trimmedJobName.length > 120) {
+                    if (jobNameInput) {
+                        jobNameInput.classList.add('invalid');
+                        if (typeof jobNameInput.focus === 'function') {
+                            jobNameInput.focus();
+                        }
+                    }
+                    msg.textContent = 'Job name must be 120 characters or fewer.';
+                    return;
+                } else {
+                    formData.set('job_name', trimmedJobName);
+                }
+            }
+            const rawTarget = formData.get('target_objective_value');
+            if (typeof rawTarget === 'string') {
+                const trimmed = rawTarget.trim();
+                if (trimmed.length === 0) {
+                    formData.delete('target_objective_value');
+                } else {
+                    const numeric = Number(trimmed);
+                    if (!Number.isFinite(numeric)) {
+                        if (targetObjInput) {
+                            targetObjInput.classList.add('invalid');
+                            if (typeof targetObjInput.focus === 'function') {
+                                targetObjInput.focus();
+                            }
+                        }
+                        msg.textContent = 'Target objective value must be numeric.';
+                        return;
+                    }
+                    formData.set('target_objective_value', String(numeric));
+                }
+            }
             maybeDeleteEmptyFile(form, formData, 'file');
             maybeDeleteEmptyFile(form, formData, 'qubo_matrix');
             maybeDeleteEmptyFile(form, formData, 'h_vector');

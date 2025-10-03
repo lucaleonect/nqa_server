@@ -38,6 +38,7 @@ parser.add_argument("--mcmc_num_sweep_steps_max", type=int,default=2**6)
 parser.add_argument("--num_workers", type=int, default=1)
 parser.add_argument("--cuda_device", type=int, default=0)
 parser.add_argument("--trial_max_runtime", type=int, default=60 * 30)
+parser.add_argument("--target_objective_value", type=float, default=-1e5)
 
 args = parser.parse_args()
 
@@ -56,6 +57,8 @@ os.makedirs(STUDY_NAME, exist_ok=True)
 DB_STORAGE = f"sqlite:///{args.db_storage_path}"
 NUM_TRIALS = args.num_trials
 NUM_WORKERS = args.num_workers
+
+TARGET_OBJECTIVE_VALUE = args.target_objective_value
 
 default_args = {
     "cuda_device": args.cuda_device,
@@ -150,6 +153,11 @@ def objective(trial):
 
     return obj_vaue
 
+def study_callback(study, trial):
+    if study.best_value is not None and study.best_value < TARGET_OBJECTIVE_VALUE:
+        print(f"Target objective value {TARGET_OBJECTIVE_VALUE} reached. Stopping study.")
+        study.stop()
+
 
 def main():
     optuna_sampler = optuna.samplers.CmaEsSampler()
@@ -167,6 +175,7 @@ def main():
         objective,
         n_trials=cmaes_trials,
         n_jobs=NUM_WORKERS,
+        callbacks=[study_callback],
     )
 
     optuna_sampler = optuna.samplers.TPESampler()
@@ -175,6 +184,7 @@ def main():
         objective,
         n_trials=tpe_trials,
         n_jobs=NUM_WORKERS,
+        callbacks=[study_callback],
     )
 
 

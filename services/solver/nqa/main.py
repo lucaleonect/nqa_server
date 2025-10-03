@@ -49,6 +49,7 @@ _ALLOWED_STUDY_ARGS: Dict[str, Tuple[str, Optional[float]]] = {
     "mcmc_num_samples_max": ("int", 1),
     "mcmc_num_sweep_steps_min": ("int", 1),
     "mcmc_num_sweep_steps_max": ("int", 1),
+    "target_objective_value": ("float", None),
 }
 
 

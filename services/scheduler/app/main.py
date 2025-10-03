@@ -27,6 +27,7 @@ except ValueError:
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS jobs (
 id TEXT PRIMARY KEY,
+name TEXT,
 status TEXT NOT NULL,
 filename TEXT NOT NULL,
 created_at TIMESTAMP NOT NULL,
@@ -34,6 +35,11 @@ updated_at TIMESTAMP NOT NULL,
 result_dir TEXT NOT NULL,
 error TEXT
 );
+"""
+
+
+ENSURE_NAME_COLUMN_SQL = """
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS name TEXT;
 """
 
 
@@ -170,7 +176,9 @@ def run_once(conn):
         if not job:
             return False
         job_id = job["id"]
-        print(f"[scheduler] picked job {job_id}")
+        job_name = job.get("name") if isinstance(job, dict) else None
+        name_fragment = f" ({job_name})" if job_name else ""
+        print(f"[scheduler] picked job {job_id}{name_fragment}")
         cur.execute(MARK_RUNNING, (job_id,))
         conn.commit()
 
@@ -186,7 +194,8 @@ def run_once(conn):
 
     endpoint = f"{SOLVER_URL.rstrip('/')}/run"
     study_name = payload.get("study_name")
-    print(f"[scheduler] submitting job {job_id} (study={study_name}) to solver: {endpoint}")
+    submit_fragment = f" name={job_name}" if job_name else ""
+    print(f"[scheduler] submitting job {job_id}{submit_fragment} (study={study_name}) to solver: {endpoint}")
     try:
         response = requests.post(
             endpoint,
@@ -240,6 +249,7 @@ if __name__ == "__main__":
             with psycopg2.connect(DB_URL) as conn:
                 with conn.cursor() as cur:
                     cur.execute(CREATE_TABLE_SQL)
+                    cur.execute(ENSURE_NAME_COLUMN_SQL)
                     conn.commit()
                 # Keep using this open connection inside the loop
                 while True:

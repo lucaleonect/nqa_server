@@ -15,6 +15,7 @@ class JobStatus(str, enum.Enum):
 class Job(Base):
     __tablename__ = "jobs"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=True)
     status = Column(Enum(JobStatus), nullable=False, default=JobStatus.QUEUED)
     filename = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
