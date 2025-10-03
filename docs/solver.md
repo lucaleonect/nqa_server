@@ -3,6 +3,17 @@
 The solver service now accepts problem instances directly in the HTTP request body and drives Optuna-based hyperparameter searches by launching `nqa/master.py`.  Each request supplies a coupling matrix `J`, optional vectors `h` and `g`, and an optional constant energy shift; the service persists these arrays to `/data/studies/<study_id>/inputs/`, spawns the Optuna runner, and returns truncated logs once execution completes.  QUBO uploads handled by the API are converted upstream into the corresponding Ising inputs and shift before arriving here.
 
 
+## Neural Quantum Annealing Explained
+Neural Quantum Annealing (NQA) is the algorithm executed by `master.py`, detailed in `paper/paper.pdf`. The core ideas are:
+
+- **Deep Boltzmann Quantum States (DBQS)**: Each optimisation run represents the problem’s ground state with a layered Boltzmann-style ansatz. Visible spins match the Ising variables in the uploaded instance, while hidden quantum spins introduce extra expressive power without contributing to the energy. Limited inter-layer connectivity keeps block-Gibbs sampling efficient even for hundreds of spins (see paper §§II–III).
+- **Interpolated Hamiltonian schedule**: NQA defines a path `H(s)` that sweeps from an easy reference Hamiltonian to the submitted instance. By discretising this schedule, the solver repeatedly re-optimises the DBQS parameters so the wavefunction follows the ground state throughout the anneal (paper §IV).
+- **Natural-gradient optimisation**: At each step the solver performs Stochastic Reconfiguration (the natural gradient on the variational manifold) combined with modern stochastic optimisers. This combination stabilises learning on rugged spin-glass landscapes and underpins the “neural” part of the method.
+- **Hybrid classical workflow**: Although inspired by adiabatic quantum computation, every stage runs on classical hardware. Optuna searches over annealing schedules, sample counts, and optimiser settings to tailor NQA to each problem family.
+
+This service packages that pipeline so API users only need to supply the input matrices; the NQA machinery handles the rest. For the full derivation, benchmarks, and comparisons against hardware quantum annealers, consult the referenced paper.
+
+
 ## Responsibilities
 
 - Validate that `J_matrix` is square and that optional vectors match its dimension.
