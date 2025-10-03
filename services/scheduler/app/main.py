@@ -12,9 +12,9 @@ from psycopg2.extras import RealDictCursor
 
 
 DB_URL = os.environ["DATABASE_URL"]
-SOLVER_URL = os.environ.get("SOLVER_URL", "http://solver:8081")
+SOLVER_URL = os.environ["SOLVER_URL"]
 SOLVER_TIMEOUT = os.environ.get("SOLVER_TIMEOUT")
-DATA_ROOT = os.environ.get("DATA_ROOT", "/data")
+DATA_ROOT = os.environ["DATA_ROOT"]
 REQUEST_FILENAME = "study_request.json"
 
 try:

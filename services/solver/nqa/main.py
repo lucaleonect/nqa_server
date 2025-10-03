@@ -15,9 +15,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 app = FastAPI(title="nqa-solver")
 
 
-DATA_ROOT = Path(os.environ.get("DATA_ROOT", "/data")).resolve()
+DATA_ROOT = Path(os.environ["DATA_ROOT"]).resolve()
 DATA_ROOT.mkdir(parents=True, exist_ok=True)
-MASTER_SCRIPT = Path(os.environ.get("NQA_MASTER_SCRIPT", "/nqa/nqa/master.py")).resolve()
+MASTER_SCRIPT = Path(os.environ["NQA_MASTER_SCRIPT"]).resolve()
 PYTHON_BIN = os.environ.get("NQA_PYTHON_BIN") or sys.executable
 DEFAULT_CUDA_DEVICE = os.environ.get("NQA_DEFAULT_CUDA_DEVICE")
 MASTER_ROOT = MASTER_SCRIPT.parent

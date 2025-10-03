@@ -36,7 +36,7 @@ try:  # pragma: no cover - optional dependency resolved at runtime
 except ImportError:  # pragma: no cover - optional dependency for dashboard UI
     uvicorn = None  # type: ignore[assignment]
 
-DATA_ROOT = os.environ.get("DATA_ROOT", "/data")
+DATA_ROOT = os.environ["DATA_ROOT"]
 UPLOAD_ROOT = os.path.join(DATA_ROOT, "jobs")
 STUDY_ROOT = os.path.join(DATA_ROOT, "studies")
 REQUEST_FILENAME = "study_request.json"
@@ -223,7 +223,7 @@ def _normalize_dashboard_path(path: Optional[str]) -> str:
     return path
 
 
-_DASHBOARD_BIND_HOST = os.environ.get("OPTUNA_DASHBOARD_BIND_HOST", "0.0.0.0")
+_DASHBOARD_BIND_HOST = os.environ["OPTUNA_DASHBOARD_BIND_HOST"]
 _DASHBOARD_PATH = _normalize_dashboard_path(os.environ.get("OPTUNA_DASHBOARD_PATH"))
 _DASHBOARD_ALLOW_ORIGIN = os.environ.get("OPTUNA_DASHBOARD_ALLOW_ORIGIN")
 
@@ -281,7 +281,7 @@ def _dashboard_process_run_server(storage_url: str, args: Sequence[object], kwar
         logging.getLogger(__name__).exception("optuna-dashboard server stopped for %s: %s", storage_url, exc)
 
 
-_DASHBOARD_PORT = int(os.environ.get("OPTUNA_DASHBOARD_PORT", "8001"))
+_DASHBOARD_PORT = int(os.environ["OPTUNA_DASHBOARD_PORT"])
 
 _dashboard_server: Optional[_DashboardServer] = None
 _dashboard_lock = threading.Lock()
