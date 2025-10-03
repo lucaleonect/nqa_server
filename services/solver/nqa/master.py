@@ -160,7 +160,7 @@ def main():
         study.set_user_attr(arg, default_args[arg])
     study.set_user_attr("Trial Args", trial_args_settings)
 
-    tpe_trials = NUM_TRIALS//4
+    tpe_trials = NUM_TRIALS//5
     cmaes_trials = NUM_TRIALS - tpe_trials
 
     study.optimize(
