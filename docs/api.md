@@ -5,7 +5,7 @@ The API service exposes the public-facing interface for submitting jobs, inspect
 
 ## Responsibilities
 
-- Validate and store user uploads (`J.npy`, optional `h_vector.npy`, `g_vector.npy`) or full QUBO matrices.
+- Validate and store user uploads (`J.npy`, optional `h_vector.npy`/`g_vector.npy` or uniform `h_value`/`g_value`) or full QUBO matrices.
 - Convert QUBO uploads into Ising form (`J`, derived `h`) and persist the associated energy shift so downstream services report energies on the original scale.
 - Accept optional user-supplied study names, ensure uniqueness, and record them for downstream services.
 - Capture optional job names and target objective hints for downstream services.
@@ -53,7 +53,7 @@ The dashboard settings are only applied when `optuna-dashboard` is available; ot
 | Method & Path | Description | Request | Response |
 |---------------|-------------|---------|----------|
 | `GET /` | HTML upload form rendered from `templates/index.html`. | – | HTML page with fields for matrix uploads; studies run with built-in Optuna defaults. |
-| `POST /upload` | Accepts a multipart upload containing the problem definition. | Fields: `file` (`.npy` for `J`), `qubo_matrix` (`.npy`), `h_vector`, `g_vector` (optional `.npy` when supplying `J` directly), `energy_shift` (optional float; ignored when a QUBO matrix is provided), `job_name` (optional label shown in job lists), `target_objective_value` (optional float forwarded to the solver), `study_name` (optional unique string), `study_args` (optional JSON object mirroring the solver CLI flags, e.g. `{ "num_trials": 100, "mcmc_num_samples_min": 8 }`). Provide either `file` or `qubo_matrix`, not both. The bundled HTML form exposes dedicated inputs for these values, pre-populated with the defaults defined in `nqa/master.py`. | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. Conflicting names raise `409`. |
+| `POST /upload` | Accepts a multipart upload containing the problem definition. | Fields: `file` (`.npy` for `J`), `qubo_matrix` (`.npy`), `h_vector`, `g_vector` (optional `.npy` when supplying `J` directly), `h_value`, `g_value` (optional uniform field scalars; mutually exclusive with the corresponding vector upload), `energy_shift` (optional float; ignored when a QUBO matrix is provided), `job_name` (optional label shown in job lists), `target_objective_value` (optional float forwarded to the solver), `study_name` (optional unique string), `study_args` (optional JSON object mirroring the solver CLI flags, e.g. `{ "num_trials": 100, "mcmc_num_samples_min": 8 }`). Provide either `file` or `qubo_matrix`, not both. The bundled HTML form exposes dedicated inputs for these values, pre-populated with the defaults defined in `nqa/master.py`. | `200 OK` with `{ "job_id": <uuid>, "status": "QUEUED" }` on success. Errors return `400/500` JSON with an `error` key. Conflicting names raise `409`. |
 | `GET /jobs` | List jobs ordered by `created_at DESC`. | – | JSON array with `id`, `name`, `status`, `filename`, `study_name`, `study_display_name`, `created_at`, `updated_at`, `error`. Timestamps are ISO strings with `Z` suffix. |
 | `GET /jobs/{job_id}` | Retrieve one job. | – | Same fields as the list entry, or `404` JSON `{ "error": "not found" }`. |
 | `GET /jobs/{job_id}/download` | Package solver results for a completed job. | – | When the job is `DONE` (or still `RUNNING` but producing files), returns a ZIP archive built on the fly from `<result_dir>`. Otherwise `400` with reason. |

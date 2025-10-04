@@ -59,7 +59,7 @@ The outer `while True` handles database connectivity issues by sleeping four sec
 ## Interaction with the Solver
 
 - Endpoint constructed from `SOLVER_URL.rstrip('/') + '/run'`.
-- Request payload: JSON document with keys `J_matrix`, optional `h_vector`/`g_vector`, and every metadata item captured by the API—`study_name` (defaults to the job ID), optional `job_name`, derived `input_format`, `energy_shift`, and any submitted `study_args` (including `target_objective_value`). Per-study hyperparameters continue to fall back to the solver defaults when unset.
+- Request payload: JSON document with keys `J_matrix`, optional `h_vector`/`g_vector` (including uniform vectors expanded from `uniform_h_value`/`uniform_g_value`), and every metadata item captured by the API—`study_name` (defaults to the job ID), optional `job_name`, derived `input_format`, `energy_shift`, and any submitted `study_args` (including `target_objective_value`). Per-study hyperparameters continue to fall back to the solver defaults when unset.
 - Timeout: `SOLVER_TIMEOUT` if provided; otherwise the request may block until the solver responds.
 - Successful responses are logged verbatim (limited to 500 characters) to aid debugging and to capture solver stdout/stderr tails.
 - Errors are serialised to strings before being written to the database. When the solver returns a JSON object with `detail`/`error`/`stdout`/`stderr` keys, the scheduler normalises the text into a compact message.

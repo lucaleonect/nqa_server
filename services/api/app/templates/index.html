@@ -514,6 +514,10 @@
                     </div>
                 </label>
                 <label>
+                    Uniform h value (optional)
+                    <input type="number" name="h_value" step="any" placeholder="e.g. 0.5" />
+                </label>
+                <label>
                     g vector (.npy, optional)
                     <div class="input-with-clear">
                         <input type="file" name="g_vector" accept=".npy" />
@@ -521,10 +525,14 @@
                     </div>
                 </label>
                 <label>
+                    Uniform g value (optional)
+                    <input type="number" name="g_value" step="any" placeholder="e.g. 1.0" />
+                </label>
+                <label>
                     Energy shift (optional)
                     <input type="number" name="energy_shift" value="0" step="any" />
                 </label>
-                <p class="hint">Leave optional vectors blank for zero fields. Do not upload these fields when using the QUBO box below.</p>
+                <p class="hint">Leave optional vectors and uniform value fields blank for zero fields. Do not supply the longitudinal field inputs when using the QUBO box below.</p>
             </fieldset>
 
             <fieldset>
@@ -854,6 +862,13 @@
             const quboInput = form.querySelector('input[name="qubo_matrix"]');
             const hasIsing = Boolean(isingInput && isingInput.files && isingInput.files.length > 0);
             const hasQubo = Boolean(quboInput && quboInput.files && quboInput.files.length > 0);
+            const hVectorInput = form.querySelector('input[name="h_vector"]');
+            const gVectorInput = form.querySelector('input[name="g_vector"]');
+            const hValueInput = form.querySelector('input[name="h_value"]');
+            const gValueInput = form.querySelector('input[name="g_value"]');
+            const hasHFile = Boolean(hVectorInput && hVectorInput.files && hVectorInput.files.length > 0);
+            const hasGFile = Boolean(gVectorInput && gVectorInput.files && gVectorInput.files.length > 0);
+            const hasRawHValue = Boolean(hValueInput && hValueInput.value.trim().length > 0);
 
             if (!hasIsing && !hasQubo) {
                 if (isingInput) isingInput.classList.add('invalid');
@@ -870,11 +885,20 @@
             }
 
             if (hasQubo) {
-                const hInput = form.querySelector('input[name="h_vector"]');
-                if (hInput && hInput.files && hInput.files.length > 0) {
-                    hInput.classList.add('invalid');
+                if (hasHFile && hVectorInput) {
+                    hVectorInput.classList.add('invalid');
                     msg.textContent = 'Omit the h vector when uploading a QUBO matrix; it will be derived automatically.';
-                    hInput.focus();
+                    if (typeof hVectorInput.focus === 'function') {
+                        hVectorInput.focus();
+                    }
+                    return;
+                }
+                if (hasRawHValue && hValueInput) {
+                    hValueInput.classList.add('invalid');
+                    msg.textContent = 'Omit the uniform h value when uploading a QUBO matrix; it will be derived automatically.';
+                    if (typeof hValueInput.focus === 'function') {
+                        hValueInput.focus();
+                    }
                     return;
                 }
             }
@@ -882,6 +906,30 @@
             const jobNameInput = form.querySelector('input[name="job_name"]');
             const targetObjInput = form.querySelector('input[name="target_objective_value"]');
             const formData = new FormData(form);
+            const sanitizeOptionalNumber = (fieldName, input, label) => {
+                const raw = formData.get(fieldName);
+                if (typeof raw !== 'string') {
+                    return { ok: true, present: false };
+                }
+                const trimmed = raw.trim();
+                if (trimmed.length === 0) {
+                    formData.delete(fieldName);
+                    return { ok: true, present: false };
+                }
+                const numeric = Number(trimmed);
+                if (!Number.isFinite(numeric)) {
+                    if (input) {
+                        input.classList.add('invalid');
+                        if (typeof input.focus === 'function') {
+                            input.focus();
+                        }
+                    }
+                    msg.textContent = `${label} must be numeric.`;
+                    return { ok: false, present: false };
+                }
+                formData.set(fieldName, String(numeric));
+                return { ok: true, present: true, value: numeric };
+            };
             const jobNameValue = formData.get('job_name');
             if (typeof jobNameValue === 'string') {
                 const trimmedJobName = jobNameValue.trim();
@@ -919,6 +967,36 @@
                     }
                     formData.set('target_objective_value', String(numeric));
                 }
+            }
+            const hValueState = sanitizeOptionalNumber('h_value', hValueInput, 'Uniform h value');
+            if (!hValueState.ok) {
+                return;
+            }
+            const gValueState = sanitizeOptionalNumber('g_value', gValueInput, 'Uniform g value');
+            if (!gValueState.ok) {
+                return;
+            }
+            if (hasHFile && hValueState.present) {
+                hVectorInput.classList.add('invalid');
+                if (hValueInput) {
+                    hValueInput.classList.add('invalid');
+                    if (typeof hValueInput.focus === 'function') {
+                        hValueInput.focus();
+                    }
+                }
+                msg.textContent = 'Provide either an h vector file or a uniform h value, not both.';
+                return;
+            }
+            if (hasGFile && gValueState.present) {
+                gVectorInput.classList.add('invalid');
+                if (gValueInput) {
+                    gValueInput.classList.add('invalid');
+                    if (typeof gValueInput.focus === 'function') {
+                        gValueInput.focus();
+                    }
+                }
+                msg.textContent = 'Provide either a g vector file or a uniform g value, not both.';
+                return;
             }
             maybeDeleteEmptyFile(form, formData, 'file');
             maybeDeleteEmptyFile(form, formData, 'qubo_matrix');

@@ -94,6 +94,8 @@ dynamic_args = {
 flag_args = {
 }
 
+is_classical_target = (args.g_vector_path is None)  # If g_vector_path is not given, we assume it's a classical target Hamiltonian.
+
 def start_annealer(cfg: dict):
     cmd = [
         "python3",
@@ -140,18 +142,17 @@ def objective(trial):
         pass
 
     out_data = np.load(f"{annealer_args['save_path']}/data.npz")
-    obj_vaue = out_data["target_energy"][-1, 0]
-    print(
-        f"Trial {trial.number} completed. Objective values: {obj_vaue:.2f}, {out_data["target_energy"][-1, 0]:.2f}, {out_data["best_energy_so_far"][-1]:.2f}, {out_data["runtime"]}"
-    )
+    obj_value = out_data["target_energy"][-1, 0]
 
-    trial.set_user_attr("Final Energy", out_data["target_energy"][-1, 0])
-    trial.set_user_attr("Best Target Energy", out_data["best_energy_so_far"][-1])
+    trial.set_user_attr("Final Energy", out_data["target_energy"][-1, 0].real)
+    if is_classical_target:
+        trial.set_user_attr("Best Target Energy", out_data["best_energy_so_far"][-1])
+        trial.set_user_attr("Best Config", str(np.array((out_data["best_config"] + 1) / 2)))
+    trial.set_user_attr("Final Energy Variance", out_data["target_energy"][-1, 1].real)
     trial.set_user_attr("Num Params", int(out_data["num_params"]))
     trial.set_user_attr("Runtime", float(out_data["runtime"]))
-    trial.set_user_attr("Best Config", str(np.array((out_data["best_config"] + 1) / 2)))
 
-    return obj_vaue
+    return obj_value
 
 def study_callback(study, trial):
     if study.best_value is not None and study.best_value < TARGET_OBJECTIVE_VALUE:

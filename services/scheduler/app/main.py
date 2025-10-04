@@ -132,9 +132,11 @@ def _build_solver_payload(job: dict) -> dict:
     h_path = os.path.join(job_directory, "h_vector.npy")
     g_path = os.path.join(job_directory, "g_vector.npy")
 
+    j_matrix = _load_matrix(j_path)
     payload = {
-        "J_matrix": _load_matrix(j_path).tolist(),
+        "J_matrix": j_matrix.tolist(),
     }
+    matrix_size = j_matrix.shape[0]
 
     study_name = study_request.get("study_name")
     if not study_name:
@@ -153,12 +155,40 @@ def _build_solver_payload(job: dict) -> dict:
         except (TypeError, ValueError) as exc:
             raise ValueError("energy_shift must be numeric") from exc
 
-    vector = _load_vector(h_path)
-    if vector is not None:
-        payload["h_vector"] = vector.tolist()
-    vector = _load_vector(g_path)
-    if vector is not None:
-        payload["g_vector"] = vector.tolist()
+    uniform_h = study_request.get("uniform_h_value")
+    uniform_g = study_request.get("uniform_g_value")
+
+    def _ensure_numeric(value, field_name: str) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name} must be numeric") from exc
+
+    if uniform_h is not None:
+        if os.path.exists(h_path):
+            raise ValueError("Provide either uniform_h_value or h_vector.npy, not both")
+        payload["h_vector"] = (np.ones(matrix_size) * _ensure_numeric(uniform_h, "uniform_h_value")).tolist()
+    else:
+        vector = _load_vector(h_path)
+        if vector is not None:
+            if vector.shape[0] != matrix_size:
+                raise ValueError(
+                    f"h_vector length {vector.shape[0]} does not match coupling matrix dimension {matrix_size}"
+                )
+            payload["h_vector"] = vector.tolist()
+
+    if uniform_g is not None:
+        if os.path.exists(g_path):
+            raise ValueError("Provide either uniform_g_value or g_vector.npy, not both")
+        payload["g_vector"] = (np.ones(matrix_size) * _ensure_numeric(uniform_g, "uniform_g_value")).tolist()
+    else:
+        vector = _load_vector(g_path)
+        if vector is not None:
+            if vector.shape[0] != matrix_size:
+                raise ValueError(
+                    f"g_vector length {vector.shape[0]} does not match coupling matrix dimension {matrix_size}"
+                )
+            payload["g_vector"] = vector.tolist()
 
     if "cuda_device" in study_request and study_request["cuda_device"] is not None:
         try:

@@ -715,7 +715,9 @@ async def upload(
     study_args_raw: Optional[str] = Form(None, alias="study_args"),
     energy_shift: Optional[str] = Form("0"),
     h_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
+    h_value: Optional[str] = Form(None),
     g_vector: Optional[UploadFile | Sequence[UploadFile]] = File(None),
+    g_value: Optional[str] = Form(None),
 ):
     """Handle problem uploads, supporting both direct Ising inputs and derived QUBO conversions."""
     # Normalise optional inputs that may arrive as lists or other sentinel values
@@ -736,9 +738,11 @@ async def upload(
     if qubo_matrix is not None and not qubo_matrix.filename.endswith(".npy"):
         return JSONResponse({"error": "QUBO matrix must be a .npy file"}, status_code=400)
 
-    if qubo_matrix is not None and h_vector is not None:
+    trimmed_h_value = h_value.strip() if isinstance(h_value, str) else None
+
+    if qubo_matrix is not None and (h_vector is not None or (trimmed_h_value not in (None, ""))):
         return JSONResponse(
-            {"error": "Do not include an h_vector when uploading a QUBO matrix; it is derived automatically."},
+            {"error": "Do not include h field inputs when uploading a QUBO matrix; it is derived automatically."},
             status_code=400,
         )
 
@@ -747,6 +751,17 @@ async def upload(
             continue
         if not optional_file.filename.endswith(".npy"):
             return JSONResponse({"error": f"{field_name} must be a .npy file"}, status_code=400)
+
+    def _parse_optional_float(raw_value: Optional[str], field: str) -> Optional[float]:
+        if raw_value is None:
+            return None
+        trimmed = raw_value.strip()
+        if trimmed == "":
+            return None
+        try:
+            return float(trimmed)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field} must be numeric")
 
     try:
         parsed_study_args = _parse_study_args(study_args_raw)
@@ -764,6 +779,28 @@ async def upload(
             target_obj_value = float(target_objective_value)
         except (TypeError, ValueError):
             return JSONResponse({"error": "target_objective_value must be numeric"}, status_code=400)
+
+    try:
+        parsed_h_value = _parse_optional_float(h_value, "h_value")
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    try:
+        parsed_g_value = _parse_optional_float(g_value, "g_value")
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    if h_vector is not None and parsed_h_value is not None:
+        return JSONResponse(
+            {"error": "Provide either an h_vector file or a uniform h_value, not both."},
+            status_code=400,
+        )
+
+    if g_vector is not None and parsed_g_value is not None:
+        return JSONResponse(
+            {"error": "Provide either a g_vector file or a uniform g_value, not both."},
+            status_code=400,
+        )
 
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(UPLOAD_ROOT, job_id)
@@ -877,6 +914,10 @@ async def upload(
         study_payload["study_args"] = final_study_args
     if requested_study_name:
         study_payload["requested_study_name"] = requested_study_name
+    if parsed_h_value is not None:
+        study_payload["uniform_h_value"] = parsed_h_value
+    if parsed_g_value is not None:
+        study_payload["uniform_g_value"] = parsed_g_value
 
     try:
         with open(os.path.join(job_dir, REQUEST_FILENAME), "w", encoding="utf-8") as f:
