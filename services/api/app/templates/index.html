@@ -98,6 +98,56 @@
             gap: 2rem;
         }
 
+        .tabs {
+            display: flex;
+            flex-direction: column;
+            gap: 1.6rem;
+        }
+
+        .tab-list {
+            display: inline-flex;
+            gap: 0.5rem;
+            padding: 0.4rem;
+            border-radius: 999px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            align-self: flex-start;
+        }
+
+        .tab-button {
+            border: none;
+            background: transparent;
+            color: var(--muted);
+            font-size: 0.95rem;
+            font-weight: 500;
+            padding: 0.55rem 1.25rem;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .tab-button:hover,
+        .tab-button:focus-visible {
+            color: var(--accent);
+            outline: none;
+        }
+
+        .tab-button--active {
+            color: var(--button-text);
+            background: linear-gradient(150deg, var(--accent), var(--accent-strong));
+            box-shadow: 0 12px 25px -12px rgba(14, 165, 233, 0.45);
+        }
+
+        .tab-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+        }
+
+        .tab-panel[hidden] {
+            display: none;
+        }
+
         header {
             display: flex;
             flex-direction: column;
@@ -456,6 +506,16 @@
                 align-items: flex-start;
             }
 
+            .tab-list {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .tab-button {
+                flex: 1;
+                text-align: center;
+            }
+
             form {
                 border-radius: 14px;
             }
@@ -482,7 +542,13 @@
             </div>
             <p class="lead">Classical and Quantum Spin Glass Solver. <a href="https://github.com/lucaleonect/nqa_server" target="_blank" rel="noopener noreferrer">GitHub</a></p>
         </header>
-        <form id="uploadForm">
+        <div class="tabs" data-active-tab="submit">
+            <div class="tab-list" role="tablist" aria-label="Job console">
+                <button type="button" class="tab-button tab-button--active" role="tab" id="tab-submit" aria-selected="true" aria-controls="panel-submit" data-tab="submit">Submit Job</button>
+                <button type="button" class="tab-button" role="tab" id="tab-queue" aria-selected="false" aria-controls="panel-queue" data-tab="queue">Queue</button>
+            </div>
+            <section id="panel-submit" class="tab-panel" role="tabpanel" aria-labelledby="tab-submit" data-tab-panel="submit">
+            <form id="uploadForm">
             <fieldset>
                 <legend>Job details</legend>
                 <label>
@@ -574,12 +640,15 @@
             </fieldset>
 
             <button type="submit">Start study</button>
-        </form>
+            </form>
 
-        <p id="msg"></p>
-
-        <h2>Jobs</h2>
-        <div id="jobs"></div>
+            <p id="msg"></p>
+            </section>
+            <section id="panel-queue" class="tab-panel" role="tabpanel" aria-labelledby="tab-queue" data-tab-panel="queue" hidden>
+                <h2>Jobs</h2>
+                <div id="jobs"></div>
+            </section>
+        </div>
     </main>
 
     <script>
@@ -587,6 +656,64 @@
         const msg = document.getElementById('msg');
         const themeStorageKey = 'nqa-ui-theme';
         const themeToggle = document.getElementById('themeToggle');
+        const tabsRoot = document.querySelector('.tabs');
+        const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
+        const tabPanels = new Map(
+            Array.from(document.querySelectorAll('[data-tab-panel]')).map((panel) => [panel.dataset.tabPanel, panel])
+        );
+
+        const setActiveTab = (targetTab, options = {}) => {
+            if (!tabPanels.has(targetTab)) {
+                return;
+            }
+            const { focus = false } = options;
+            tabButtons.forEach((button) => {
+                const isActive = button.dataset.tab === targetTab;
+                button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                button.classList.toggle('tab-button--active', isActive);
+                button.tabIndex = isActive ? 0 : -1;
+                if (isActive && focus) {
+                    button.focus();
+                }
+            });
+            tabPanels.forEach((panel, key) => {
+                panel.hidden = key !== targetTab;
+            });
+            if (tabsRoot) {
+                tabsRoot.dataset.activeTab = targetTab;
+            }
+        };
+
+        if (tabButtons.length > 0 && tabPanels.size > 0) {
+            const defaultTab = tabButtons.find((button) => button.getAttribute('aria-selected') === 'true');
+            const initialTab = (defaultTab && defaultTab.dataset.tab) || tabButtons[0].dataset.tab;
+            setActiveTab(initialTab);
+            const rotateFocus = (currentIndex, direction) => {
+                const targetIndex = (currentIndex + direction + tabButtons.length) % tabButtons.length;
+                const nextButton = tabButtons[targetIndex];
+                if (nextButton) {
+                    setActiveTab(nextButton.dataset.tab, { focus: true });
+                }
+            };
+            tabButtons.forEach((button, index) => {
+                button.addEventListener('click', () => setActiveTab(button.dataset.tab));
+                button.addEventListener('keydown', (event) => {
+                    if (event.key === 'ArrowRight') {
+                        event.preventDefault();
+                        rotateFocus(index, 1);
+                    } else if (event.key === 'ArrowLeft') {
+                        event.preventDefault();
+                        rotateFocus(index, -1);
+                    } else if (event.key === 'Home') {
+                        event.preventDefault();
+                        setActiveTab(tabButtons[0].dataset.tab, { focus: true });
+                    } else if (event.key === 'End') {
+                        event.preventDefault();
+                        setActiveTab(tabButtons[tabButtons.length - 1].dataset.tab, { focus: true });
+                    }
+                });
+            });
+        }
 
         const getStoredTheme = () => {
             try {
