@@ -148,7 +148,7 @@ def objective(trial):
     if is_classical_target:
         trial.set_user_attr("Best Target Energy", out_data["best_energy_so_far"][-1])
         trial.set_user_attr("Best Config", str(np.array((out_data["best_config"] + 1) / 2)))
-    trial.set_user_attr("Log Final Energy Variance", np.log(out_data["target_energy"][-1, 1].real))
+    trial.set_user_attr("Final Energy Variance", out_data["target_energy"][-1, 1].real)
     trial.set_user_attr("Num Params", int(out_data["num_params"]))
     trial.set_user_attr("Runtime", float(out_data["runtime"]))
 
