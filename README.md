@@ -101,23 +101,15 @@ By default the study directory is named after the job ID; supplying a custom stu
 
 ## Architecture Overview
 At runtime four containers collaborate:
-```
-┌────────┐       job              ┌──────────┐        job data            ┌──────────┐
-│  User  │ ────────────────────▶ │   API    │ ◀───────────────────────▶│ Postgres │
-│        │◀────────────────────  │ (FastAPI)│                            └──────────┘
-└────────┘     results            └────┬─────┘                              ▲     ▲
-                                       │                                    │     │
-                                       │                                    │     │
-                                       │                                    │     │
-                            ┌──────────▼──────────┐         status updates  │     │
-                            │     Scheduler       │◀───────────────────────┘     │
-                            │  (polling worker)   │                               │
-                            └──────────┬──────────┘                               │
-                                       │ POST /run                                │
-                            ┌──────────▼──────────┐                               │
-                            │      Solver         │             results           │
-                            │ (FastAPI + JAX NQA) │───────────────────────────────┘
-                            └─────────────────────┘       (continuous stream)
+```mermaid
+graph
+    A[User] <-->|Job/Results| B[API]
+    B <--> C[Postgres DB]
+    B --> D[Scheduler]
+    D <-->|Statust updates| C
+    D -->|POST /run| E[NQA Solver]
+    E -->|Save results| C
+  
 ```
 - **API (`services/api`)**: FastAPI application serving the browser UI and REST endpoints. Also proxies Optuna Dashboard so you can inspect studies live.
 - **Scheduler (`services/scheduler`)**: Polls the database for queued jobs, requests runs from the solver, and updates job status.
