@@ -102,7 +102,7 @@ By default the study directory is named after the job ID; supplying a custom stu
 ## Architecture Overview
 At runtime four containers collaborate:
 ```mermaid
-graph LR
+graph
     A[User] <-->|Job/Results| B[API]
     B <--> C[Postgres DB]
     B --> D[Scheduler]
