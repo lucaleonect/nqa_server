@@ -1,7 +1,7 @@
 import numpy as np
 import optuna
 
-DB_STORAGE_TFSK = "sqlite:///Benchmarks/Optuna_QSK_paper/tfsk_db.db"
+DB_STORAGE_TFSK = "sqlite:///SK_100/tfsk_db.db"
 
 data = {}
 
@@ -23,5 +23,3 @@ for i in range(10):
     data["TFSK"][f"Instance_{i}"]["inverse_num_params"] = np.array(
         [1.0 / t.user_attrs["Num Params"] for t in completed_trials]
     )
-    data["TFSK"][f"Instance_{i}"]["bands"] = []
-    data["TFSK"][f"Instance_{i}"]["bands_ip"] = []

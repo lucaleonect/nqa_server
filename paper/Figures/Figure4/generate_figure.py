@@ -19,9 +19,9 @@ def prx_figsize(width="single", aspect=1.5):
     return (w, w * aspect)
 
 
-plt.style.use("prx_quantum.mplstyle")
+plt.style.use("../prx_quantum.mplstyle")
 
-with open("./p_max_7/JSS_info.json", "r") as f:
+with open("./JSS_info.json", "r") as f:
     info = json.load(f)
 
 JSS_df = pd.DataFrame.from_dict(info["df"], orient="index").T
@@ -329,7 +329,7 @@ def _probs_at_iter(mags, it_idx, n_spins):
 
 def main():
     # il sample deve essere un dizionario con valori
-    Q = np.load("./p_max_7/matrix_Q_j5_op5_pruned.npy")
+    Q = np.load("./matrix_Q_j5_op5_pruned.npy")
     print("Q shape: ", Q.shape)
     n_spins = Q.shape[0]
 
@@ -437,7 +437,7 @@ def main():
     ax_main.set_xlabel(r"$s$")
     ax_main.set_ylabel(r"$\langle H_T \rangle$")
     # Put the title above the insets to avoid overlap
-    fig.suptitle("Target Energy with schedule superposition snapshots (early/mid/late)", y=0.98)
+    fig.suptitle("Target Energy with schedule superposition snapshots", y=0.98)
 
     fig.savefig("jsq_anneal_insets.pdf", bbox_inches="tight")
     fig.savefig("jsq_anneal_insets.png", bbox_inches="tight")
