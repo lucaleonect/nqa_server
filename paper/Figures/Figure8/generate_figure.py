@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
 
 CM = 1 / 2.54
 PRX_SINGLE = 8.5 * CM  # ~3.35 in
@@ -80,7 +81,15 @@ ax2.legend(frameon=True)
 ax2.tick_params(axis="both", which="major")
 ax1.set_title(r"SR (complex NQS)")
 ax2.set_title(r"NQA (catalyzed)")
-ax1.text(0.95, 0.05, r"$N=200$", transform=ax1.transAxes, ha="right")
-ax2.text(0.95, 0.05, r"$N=200$", transform=ax2.transAxes, ha="right")
+ax1.text(0.95, 0.05, r"$N=200$", transform=ax1.transAxes, 
+    ha="right",
+    color="black",
+    path_effects=[pe.withStroke(linewidth=3, foreground="white")]
+)
+ax2.text(0.95, 0.05, r"$N=200$", transform=ax2.transAxes, 
+    ha="right",
+    color="black",
+    path_effects=[pe.withStroke(linewidth=3, foreground="white")]
+)
 fig.tight_layout()
 fig.savefig("res_energies_app2.pdf")
