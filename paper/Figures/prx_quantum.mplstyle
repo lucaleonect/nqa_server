@@ -1,0 +1,47 @@
+# --- sizing: default to single-column figure ---
+figure.figsize: 3.35, 2.50    # ~8.5 cm wide × ~6.3 cm tall
+figure.dpi: 300
+savefig.dpi: 600
+savefig.bbox: tight
+savefig.format: pdf           # vector output preferred for production
+
+
+# --- typography (Computer Modern) ---
+font.family: serif
+font.serif: CMU Serif, Computer Modern, DejaVu Serif   # CMU=Computer Modern Unicode (fallbacks ok)
+mathtext.fontset: cm                                    # Computer Modern math
+font.size: 8.0
+axes.labelsize: 9.0
+axes.titlesize: 9.5
+xtick.labelsize: 8.0
+ytick.labelsize: 8.0
+legend.fontsize: 8.0
+axes.unicode_minus: True
+
+# --- lines, markers, ticks (APS conventions) ---
+axes.linewidth: 0.6
+lines.linewidth: 1.0
+lines.markersize: 4
+errorbar.capsize: 2
+
+xtick.direction: in
+ytick.direction: in
+xtick.top: True
+ytick.right: True
+xtick.major.size: 3
+ytick.major.size: 3
+xtick.minor.size: 1.8
+ytick.minor.size: 1.8
+xtick.major.width: 0.6
+ytick.major.width: 0.6
+xtick.minor.width: 0.5
+ytick.minor.width: 0.5
+
+axes.grid: False
+legend.frameon: False
+
+# Optional: cycle colors *and* linestyles so curves remain distinct in grayscale.
+# If your Matplotlib supports cycler in styles, uncomment the next line:
+# axes.prop_cycle: cycler('color', ['k', '#1f77b4', '#d62728', '#2ca02c', '#7f7f7f']) + cycler('linestyle', ['-', '--', '-.', ':', (0, (3, 1, 1, 1))])
+
+# Make math look sans-serif so legends match axes labels
