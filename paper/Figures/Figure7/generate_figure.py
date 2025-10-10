@@ -47,34 +47,39 @@ ax2.set_title(r"NQA")
 ax1.hist(
     data["SK_100"]["RBQS_SR"]["e_best"],
     bins=bin_edges,
-    alpha=0.6,
+    alpha=0.5,
     label=r"$RBQS$",
-    color="green"
+    color="green",
+    hatch="\\\\\\\\"
 )
 ax1.hist(
     data["SK_100"]["cRBM_SR"]["e_best"],
     bins=bin_edges,
-    alpha=0.4,
+    alpha=0.5,
     label=r"$cRBM$",
     color="red",
+    hatch="////"
 )
 ax1.set_xscale("log")
+ax1.set_yticks([0, 2, 4, 6, 8, 10])
 ax1.set_ylabel("Counts")
 ax1.legend(frameon=True)
 ax1.tick_params(axis="both", which="major")
 ax2.hist(
     data["SK_100"]["RBQS_NQA"]["e_best"],
     bins=bin_edges,
-    alpha=0.6,
+    alpha=0.5,
     label=r"$RBQS$",
-    color="green"
+    color="green",
+    hatch="\\\\\\\\"
 )
 ax2.hist(
     data["SK_100"]["cRBM_NQA"]["e_best"],
     bins=bin_edges,
-    alpha=0.4,
+    alpha=0.5,
     label=r"$cRBM$",
     color="red",
+    hatch="////"
 )
 ax2.set_xscale("log")
 ax2.legend(frameon=True)
@@ -85,16 +90,18 @@ ax1, ax2 = axes[1]
 ax1.hist(
     data["SK_200"]["RBQS_SR"]["e_best"],
     bins=bin_edges,
-    alpha=0.6,
+    alpha=0.5,
     label=r"$RBQS$",
-    color="green"
+    color="green",
+    hatch="\\\\\\\\"
 )
 ax1.hist(
     data["SK_200"]["cRBM_SR"]["e_best"],
     bins=bin_edges,
-    alpha=0.4,
+    alpha=0.5,
     label=r"$cRBM$",
     color="red",
+    hatch="////"
 )
 ax1.set_xscale("log")
 ax1.set_ylabel("Counts")
@@ -103,20 +110,23 @@ ax1.tick_params(axis="both", which="major")
 ax2.hist(
     data["SK_200"]["RBQS_NQA"]["e_best"],
     bins=bin_edges,
-    alpha=0.6,
+    alpha=0.5,
     label=r"$RBQS$",
-    color="green"
+    color="green",
+    hatch="\\\\\\\\"
 )
 ax2.hist(
     data["SK_200"]["cRBM_NQA"]["e_best"],
     bins=bin_edges,
-    alpha=0.4,
+    alpha=0.5,
     label=r"$cRBM$",
     color="red",
+    hatch="////"
 )
 ax2.set_xscale("log")
 ax2.set_xlabel(r"$\varepsilon_{B}$")
 ax1.set_xlabel(r"$\varepsilon_{B}$")
+ax2.set_yticks([0, 2, 4, 6, 8, 10])
 ax2.legend(frameon=True)
 ax2.tick_params(axis="both", which="major")
 ax1.text(0.95, 0.05, r"$N=200$", transform=ax1.transAxes, ha="right")

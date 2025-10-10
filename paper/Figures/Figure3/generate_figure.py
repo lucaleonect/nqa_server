@@ -45,14 +45,16 @@ fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, sharey=True)
 ax1.hist(
     data["SK_100"]["RBQS_NQA"]["e_res"],
     bins=bin_edges,
-    alpha=0.4,
+    alpha=0.5,
     label=r"$\varepsilon_Q$",
+    hatch="\\\\\\\\",
 )
 ax1.hist(
     data["SK_100"]["RBQS_NQA"]["e_best"],
     bins=bin_edges,
-    alpha=0.6,
+    alpha=0.5,
     label=r"$\varepsilon_B$",
+    hatch="////"
 )
 ax1.set_xscale("log")
 ax1.set_ylabel("Counts")
@@ -61,14 +63,16 @@ ax1.tick_params(axis="both", which="major")
 ax2.hist(
     data["SK_200"]["DBQS_auto"]["e_res"],
     bins=bin_edges,
-    alpha=0.4,
+    alpha=0.5,
     label=r"$\varepsilon_Q$",
+    hatch="\\\\\\\\",
 )
 ax2.hist(
     data["SK_200"]["DBQS_auto"]["e_best"],
     bins=bin_edges,
-    alpha=0.6,
+    alpha=0.5,
     label=r"$\varepsilon_B$",
+    hatch="////"
 )
 ax1.text(0.95, 0.05, r"$N=100$", transform=ax1.transAxes, ha="right")
 ax2.text(0.95, 0.05, r"$N=200$", transform=ax2.transAxes, ha="right")

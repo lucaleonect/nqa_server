@@ -40,16 +40,18 @@ ax1, ax2 = axes
 ax1.hist(
     data["SK_200"]["RBQS_SR_cata"]["e_best"],
     bins=bin_edges,
-    alpha=0.6,
+    alpha=0.5,
     label=r"$RBQS$",
-    color="green"
+    color="green",
+    hatch="\\\\\\\\"
 )
 ax1.hist(
     data["SK_200"]["cRBM_SR_cata"]["e_best"],
     bins=bin_edges,
-    alpha=0.4,
+    alpha=0.5,
     label=r"$cRBM$",
-    color="red"
+    color="red",
+    hatch="////"
 )
 ax1.set_xscale("log")
 ax1.set_ylabel("Counts")
@@ -58,16 +60,18 @@ ax1.tick_params(axis="both", which="major")
 ax2.hist(
     data["SK_200"]["RBQS_NQA_cata"]["e_best"],
     bins=bin_edges,
-    alpha=0.6,
+    alpha=0.5,
     label=r"$RBQS$",
-    color="green"
+    color="green",
+    hatch="\\\\\\\\"
 )
 ax2.hist(
     data["SK_200"]["cRBM_NQA_cata"]["e_best"],
     bins=bin_edges,
-    alpha=0.4,
+    alpha=0.5,
     label=r"$cRBM$",
     color="red",
+    hatch="////"
 )
 ax2.set_xscale("log")
 ax2.set_xlabel(r"$\varepsilon_B$")
