@@ -5,7 +5,7 @@ import openjij as oj
 import numpy as np
 import pandas as pd
 
-ojij_reads = 10
+ojij_reads = 1000
 
 DB_STORAGE_SK_100 = "sqlite:///SK_100/sk_100.db"
 DB_STORAGE_TFSK = "sqlite:///SK_100/tfsk_db.db"
