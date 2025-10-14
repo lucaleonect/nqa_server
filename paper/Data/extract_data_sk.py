@@ -216,3 +216,10 @@ df = pd.DataFrame({
 })
 df.to_csv(save_path, index=False)
 
+# Save exact gs energies
+save_path = "./ed_classical_energies_100.csv"
+df = pd.DataFrame({
+    "instance": list(range(10)),
+    "exact_energy": exact_energies_100,
+})
+df.to_csv(save_path, index=False)
