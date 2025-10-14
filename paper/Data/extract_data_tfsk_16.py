@@ -3,7 +3,7 @@ import pandas as pd
 import optuna
 from sklearn.cluster import DBSCAN
 
-DB_STORAGE_TFSK = "sqlite:///SK_100/tfsk_db.db"
+DB_STORAGE_TFSK = "sqlite:///SK_16/tfsk_db.db"
 DBSCAN_MIN_NUM_POINTS = 5
 DBSCAN_EPS = 0.01
 NUM_SUBSAMPLES = 100
@@ -13,24 +13,25 @@ data = {"TFSK": {}}
 
 for i in range(10):
     data["TFSK"][f"Instance_{i}"] = {}
-    study = optuna.load_study(study_name=f"DBM_SK_instances_{i}", storage=DB_STORAGE_TFSK)
+    study = optuna.load_study(study_name=f"DBM_SK16_instance_{i}", storage=DB_STORAGE_TFSK)
     completed_trials = [
         t
         for t in study.trials
         if t.state == optuna.trial.TrialState.COMPLETE
-        and t.user_attrs["Final Energy Var"] < 5e-2
-        and t.user_attrs["Final Energy"] - study.best_value < 10.0
+        and t.user_attrs["Final Energy Var"] < 1e-2
+        and t.user_attrs["Final Energy"] - study.best_value < 2
     ]
     data["TFSK"][f"Instance_{i}"]["min_energy"] = min(t.user_attrs["Final Energy"] for t in completed_trials)
     data["TFSK"][f"Instance_{i}"]["final_energies"] = np.array(
-        [(t.user_attrs["Final Energy"]) for t in completed_trials]
+        [t.user_attrs["Final Energy"] for t in completed_trials]
     )
     data["TFSK"][f"Instance_{i}"]["variances"] = np.array([t.user_attrs["Final Energy Var"] for t in completed_trials])
     data["TFSK"][f"Instance_{i}"]["inverse_num_params"] = np.array(
         [1.0 / t.user_attrs["Num Params"] for t in completed_trials]
     )
-    data["TFSK"][f"Instance_{i}"]["bands"] = []
-    data["TFSK"][f"Instance_{i}"]["bands_ip"] = []
+    data["TFSK"][f"Instance_{i}"]["bands"] = {}
+    data["TFSK"][f"Instance_{i}"]["bands_ip"] = {}
+
 
 for i in range(10):
     energies = data["TFSK"][f"Instance_{i}"]["final_energies"]
@@ -242,10 +243,10 @@ df_fits = pd.DataFrame(rows_fits)
 df_stats = pd.DataFrame(rows_stats)
 
 # Write CSV files
-df_fits.to_csv("tfsk_100_band_fits.csv", index=False)
-df_stats.to_csv("tfsk_100_band_statistics.csv", index=False)
+df_fits.to_csv("tfsk_16_band_fits.csv", index=False)
+df_stats.to_csv("tfsk_16_band_statistics.csv", index=False)
 
-print("Saved tfsk_100_band_fits.csv and tfsk_100_band_statistics.csv")
+print("Saved tfsk_16_band_fits.csv and tfsk_16_band_statistics.csv")
 
 # Also save all the final energies, variances, and inverse num params for each instance in a separate CSV
 rows_final = []
@@ -267,4 +268,4 @@ for instance_key, inst_dict in data["TFSK"].items():
             }
         )
 df_final = pd.DataFrame(rows_final)
-df_final.to_csv("tfsk_100_final_energies.csv", index=False)
+df_final.to_csv("tfsk_16_final_energies.csv", index=False)

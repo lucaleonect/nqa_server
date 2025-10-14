@@ -199,7 +199,14 @@ def objective(trial):
 
 
 def study_callback(study, trial):
-    if study.best_value is not None and study.best_value < TARGET_OBJECTIVE_VALUE:
+    try:
+        if not any(t.state == optuna.trial.TrialState.COMPLETE for t in study.trials):
+            return
+        best_value = study.best_value
+    except Exception:
+        return
+
+    if best_value is not None and best_value < TARGET_OBJECTIVE_VALUE:
         print(f"Target objective value {TARGET_OBJECTIVE_VALUE} reached. Stopping study.")
         study.stop()
 
