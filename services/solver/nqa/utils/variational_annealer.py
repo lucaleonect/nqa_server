@@ -38,7 +38,9 @@ class VariationalAnnealer:
     def __init__(
         self,
         variational_quantum_state: DeepBoltzmannQuantumState,
-        parametric_gradient_estimator: Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]],
+        parametric_gradient_estimator: Callable[
+            [jnp.ndarray, jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]
+        ],
         optimizer: optax.GradientTransformation,
         annealing_schedule: jnp.ndarray,
         num_warmup_steps: Optional[int] = None,
@@ -49,6 +51,7 @@ class VariationalAnnealer:
         use_tqdm: Optional[bool] = None,
         log_every: Optional[int] = None,
         log_params: Optional[bool] = None,
+        num_replicas: Optional[int] = None,
     ) -> None:
         if persistent_chains is None:
             persistent_chains = True
@@ -64,6 +67,8 @@ class VariationalAnnealer:
             use_tqdm = False
         if log_params is None:
             log_params = False
+        if num_replicas is None:
+            num_replicas = 1
 
         # Validate basic inputs before materializing the schedule
         self._validate_constructor_inputs(
@@ -110,6 +115,7 @@ class VariationalAnnealer:
         self.use_tqdm = use_tqdm
         self.log_every = log_every
         self.log_params = log_params
+        self.num_replicas = num_replicas
 
         # Catalyst flag inferred from schedule width (2 or 3 columns)
         if self.annealing_schedule.ndim != 2 or self.annealing_schedule.shape[1] not in (2, 3):
@@ -129,6 +135,7 @@ class VariationalAnnealer:
         observables: Mapping[str, Callable[[jnp.ndarray, jnp.ndarray], Any]],
         use_tqdm_flag: bool,
         log_params_flag: bool,
+        num_replicas: int = 1,
     ) -> None:
         """Validate constructor inputs for type/shape consistency.
 
@@ -167,6 +174,9 @@ class VariationalAnnealer:
         for key, val in observables.items():
             if not isinstance(key, str) or not callable(val):
                 raise ValueError("observables_dict must map strings to callables")
+
+        if num_replicas < 1 or not isinstance(num_replicas, int):
+            raise ValueError("num_replicas must be a positive integer")
 
     @partial(jax.jit, static_argnums=(0,))
     def opt_step(
@@ -222,6 +232,25 @@ class VariationalAnnealer:
             step_data[key] = observable(params, mcmc_samples)
 
         return prngkey, params, opt_state, mcmc_samples, mcmc_endpoints, step_data
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def vmapd_opt_step(
+            self,
+            prngkeys,
+            params_arrays,
+            opt_states,
+            mcmc_samples_arrays,
+            mcmc_endpoints_arrays,
+            couplings,
+        ):
+            return jax.vmap(self.opt_step, in_axes=(0, 0, 0, 0, 0, None))(
+                prngkeys,
+                params_arrays,
+                opt_states,
+                mcmc_samples_arrays,
+                mcmc_endpoints_arrays,
+                couplings,
+            )
 
     def run(
         self,
@@ -249,24 +278,47 @@ class VariationalAnnealer:
         for key in self.observables_dict.keys():
             data[key] = []
 
-        params = self.variational_quantum_state.params
-        optimizer_state = self.optimizer.init(params)
-        prngkey, tempkey = jax.random.split(prngkey)
-        mcmc_samples, mcmc_endpoints = self.variational_quantum_state.generate_samples(
-            prngkey=tempkey,
-            params=params,
-        )
+        replica_keys = []
+        params_array = []
+        opt_states=[]
+        mcmc_samples_arrays=[]
+        mcmc_endpoints_arrays=[]
+
+
+        for r in range(self.num_replicas):
+            prngkey, tempkey_a, tempkey_b = jax.random.split(prngkey, 3)
+            params, _ = self.variational_quantum_state.init_params(tempkey_a)
+            params_array.append(params)
+            replica_keys.append(tempkey_b)
+
+            optimizer_state = self.optimizer.init(params)
+            opt_states.append(optimizer_state)
+
+            prngkey, tempkey = jax.random.split(prngkey)
+            mcmc_samples, mcmc_endpoints = self.variational_quantum_state.generate_samples(
+                prngkey=tempkey,
+                params=params,
+            )
+            mcmc_samples_arrays.append(mcmc_samples)
+            mcmc_endpoints_arrays.append(mcmc_endpoints)
+
+        replica_keys = jnp.stack(replica_keys)
+        params_array = jnp.stack(params_array)
+        optimizer_states = jax.tree_util.tree_map(lambda *x: jnp.stack(x), *opt_states)
+        mcmc_samples_arrays = jnp.stack(mcmc_samples_arrays)
+        mcmc_endpoints_arrays = jnp.stack(mcmc_endpoints_arrays)
+                                                                           
 
         pbar = self.annealing_schedule
         if self.use_tqdm:
             pbar = tqdm(pbar)
 
-        prngkey, params, optimizer_state, mcmc_samples, mcmc_endpoints, step_data = self.opt_step(
-            prngkey,
-            params,
-            optimizer_state,
-            mcmc_samples,
-            mcmc_endpoints,
+        replica_keys, params_array, optimizer_states, mcmc_samples_arrays, mcmc_endpoints_arrays, step_data = self.vmapd_opt_step(
+            replica_keys,
+            params_array,
+            optimizer_states,
+            mcmc_samples_arrays,
+            mcmc_endpoints_arrays,
             self.annealing_schedule[0],
         )
 
@@ -278,16 +330,15 @@ class VariationalAnnealer:
         start_time = time.time()
         for couplings in pbar:
             iterations_counter += 1
-            prngkey, params, optimizer_state, mcmc_samples, mcmc_endpoints, step_data = self.opt_step(
-                prngkey,
-                params,
-                optimizer_state,
-                mcmc_samples,
-                mcmc_endpoints,
+            replica_keys, params_array, optimizer_states, mcmc_samples_arrays, mcmc_endpoints_arrays, step_data = self.vmapd_opt_step(
+                replica_keys,
+                params_array,
+                optimizer_states,
+                mcmc_samples_arrays,
+                mcmc_endpoints_arrays,
                 couplings,
             )
-            jax.block_until_ready(params)
-
+            jax.block_until_ready(params_array)
 
             iters_since_log += 1
             if iters_since_log == self.log_every:
@@ -305,16 +356,20 @@ class VariationalAnnealer:
                     print("Early stopping due to runtime limit")
                     return None
 
-
         if iters_since_log != 0:
             for key, value in step_data.items():
                 data[key].append(value)
 
+        for key, value in data.items():
+            data[key] = jnp.array(value)
+
         runtime = time.time() - start_time
         data["couplings"] = self.annealing_schedule
-        data["optimized_params"] = params
+        data["optimized_params"] = params_array
         data["runtime"] = runtime
         data["num_spins"] = self.variational_quantum_state.num_spins
         data["num_params"] = self.variational_quantum_state.params.size
+        best_replica = jnp.argmin(jnp.real(data["avg_energy"][-1]))
+        data["best_replica_index"] = int(best_replica)
 
         return data

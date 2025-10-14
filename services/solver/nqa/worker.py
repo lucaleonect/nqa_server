@@ -84,6 +84,12 @@ parser.add_argument(
 
 # Annealer settings
 parser.add_argument(
+    "--vqa_num_replicas",
+    type=int,
+    default=3,
+    help="Number of replicas to run in parallel. Default is 3.",
+)
+parser.add_argument(
     "--vqa_num_annealing_steps",
     type=int,
     default=10000,
@@ -217,6 +223,12 @@ parser.add_argument(
     default=False,
     help="Disable persistent Markov chains. Default is False.",
 )
+parser.add_argument(
+    "--single_precision_arithmetics",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help="Use single precision arithmetics. Default is False, which uses double precision.",
+)
 
 args = parser.parse_args()
 # endregion
@@ -224,7 +236,8 @@ args = parser.parse_args()
 # region: imports and environment variables
 import os
 
-os.environ["JAX_ENABLE_X64"] = "True"  # Use double precision
+if not args.single_precision_arithmetics:
+    os.environ["JAX_ENABLE_X64"] = "True"  # Use double precision
 
 if args.cuda_device is not None:
     os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_device
@@ -389,6 +402,7 @@ def main():
         num_updates_per_step=args.vqa_num_updates_per_step,
         num_finetuning_steps=args.vqa_num_finetuning_steps,
         use_tqdm=args.tqdm,
+        num_replicas=args.vqa_num_replicas,
     )
 
     data = variational_annealer.run(
@@ -407,7 +421,8 @@ def main():
         serialize_data(
             data,
             args.save_path,
-            minimal_logging=(data["target_energy"][-1][0] > args.target_energy),
+            minimal_logging=(data["target_energy"][-1][0] > args.target_energy).any(),
+            # minimal_logging=True,
             classical_target=is_classical_target,
         )
 

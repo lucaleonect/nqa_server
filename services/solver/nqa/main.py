@@ -32,6 +32,7 @@ _ALLOWED_STUDY_ARGS: Dict[str, Tuple[str, Optional[float]]] = {
     "vqa_num_annealing_steps_max": ("int", 1),
     "vqa_num_updates_per_step_min": ("int", 1),
     "vqa_num_updates_per_step_max": ("int", 1),
+    "vqa_num_replicas": ("int", 1),
     "vqa_annealing_field_scale_min": ("float", 0.0),
     "vqa_annealing_field_scale_max": ("float", 0.0),
     "vqa_catalyst_field_scale_min": ("float", 0.0),

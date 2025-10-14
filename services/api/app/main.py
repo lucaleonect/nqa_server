@@ -116,6 +116,7 @@ _STUDY_ARG_SPECS: "OrderedDict[str, _StudyArgSpec]" = OrderedDict(
         _build_spec("vqa_num_annealing_steps_max", "VQA annealing steps (max)", "int", 10000, 1),
         _build_spec("vqa_num_updates_per_step_min", "VQA updates per step (min)", "int", 1, 1),
         _build_spec("vqa_num_updates_per_step_max", "VQA updates per step (max)", "int", 5, 1),
+        _build_spec("vqa_num_replicas", "VQA replicas", "int", 3, 1),
         _build_spec("vqa_annealing_field_scale_min", "Annealing field scale (min)", "float", 1e-1, 0.0),
         _build_spec("vqa_annealing_field_scale_max", "Annealing field scale (max)", "float", 1e1, 0.0),
         _build_spec("vqa_catalyst_field_scale_min", "Catalyst field scale (min)", "float", 1e-1, 0.0),

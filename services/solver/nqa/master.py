@@ -14,31 +14,32 @@ parser.add_argument("--energy_shift", type=float, default=0.0)
 parser.add_argument("--db_storage_path", type=str, default=None)
 parser.add_argument("--study_name", type=str, default=None)
 parser.add_argument("--num_trials", type=int, default=100)
-parser.add_argument("--vqa_num_annealing_steps_min", type=int, default=1000)
-parser.add_argument("--vqa_num_annealing_steps_max", type=int, default=10000)
+parser.add_argument("--vqa_num_annealing_steps_min", type=int, default=100)
+parser.add_argument("--vqa_num_annealing_steps_max", type=int, default=1000)
 parser.add_argument("--vqa_num_updates_per_step_min", type=int, default=1)
-parser.add_argument("--vqa_num_updates_per_step_max", type=int, default=5)
-parser.add_argument("--vqa_annealing_field_scale_min", type=float,default=1e-1)
-parser.add_argument("--vqa_annealing_field_scale_max", type=float,default=1e1)
-parser.add_argument("--vqa_catalyst_field_scale_min", type=float,default=1e-1)
-parser.add_argument("--vqa_catalyst_field_scale_max", type=float,default=1e1)
-parser.add_argument("--sgd_learning_rate_min", type=float,default=1e-3)
-parser.add_argument("--sgd_learning_rate_max", type=float,default=1e0)
-parser.add_argument("--sgd_momentum_min", type=float,default=0)
-parser.add_argument("--sgd_momentum_max", type=float,default=0.9)
-parser.add_argument("--sr_diagonal_shift_min", type=float,default=1e-9)
-parser.add_argument("--sr_diagonal_shift_max", type=float,default=1e-2)
-parser.add_argument("--dbqs_num_hidden_layers", type=int,default=2)
-parser.add_argument("--dbqs_unit_density_per_layer_min", type=float,default=0.25)
-parser.add_argument("--dbqs_unit_density_per_layer_max", type=float,default=4.0)
-parser.add_argument("--mcmc_num_samples_min", type=int,default=2**3)
-parser.add_argument("--mcmc_num_samples_max", type=int,default=2**6)
-parser.add_argument("--mcmc_num_sweep_steps_min", type=int,default=2**2)
-parser.add_argument("--mcmc_num_sweep_steps_max", type=int,default=2**6)
+parser.add_argument("--vqa_num_updates_per_step_max", type=int, default=3)
+parser.add_argument("--vqa_annealing_field_scale_min", type=float, default=1e-1)
+parser.add_argument("--vqa_annealing_field_scale_max", type=float, default=1e1)
+parser.add_argument("--vqa_catalyst_field_scale_min", type=float, default=1e-1)
+parser.add_argument("--vqa_catalyst_field_scale_max", type=float, default=1e1)
+parser.add_argument("--sgd_learning_rate_min", type=float, default=1e-3)
+parser.add_argument("--sgd_learning_rate_max", type=float, default=1e0)
+parser.add_argument("--sgd_momentum_min", type=float, default=0)
+parser.add_argument("--sgd_momentum_max", type=float, default=0.9)
+parser.add_argument("--sr_diagonal_shift_min", type=float, default=1e-9)
+parser.add_argument("--sr_diagonal_shift_max", type=float, default=1e-2)
+parser.add_argument("--dbqs_num_hidden_layers", type=int, default=2)
+parser.add_argument("--dbqs_unit_density_per_layer_min", type=float, default=0.25)
+parser.add_argument("--dbqs_unit_density_per_layer_max", type=float, default=4.0)
+parser.add_argument("--mcmc_num_samples_min", type=int, default=2**3)
+parser.add_argument("--mcmc_num_samples_max", type=int, default=2**4)
+parser.add_argument("--mcmc_num_sweep_steps_min", type=int, default=2**2)
+parser.add_argument("--mcmc_num_sweep_steps_max", type=int, default=2**6)
 parser.add_argument("--num_workers", type=int, default=1)
 parser.add_argument("--cuda_device", type=int, default=0)
 parser.add_argument("--trial_max_runtime", type=int, default=60 * 30)
 parser.add_argument("--target_objective_value", type=float, default=-1e5)
+parser.add_argument("--vqa_num_replicas", type=int, default=3)
 
 args = parser.parse_args()
 
@@ -70,6 +71,7 @@ default_args = {
     "mcmc_num_thermalization_steps": 2**7,
     "dbqs_num_hidden_layers": args.dbqs_num_hidden_layers,
     "energy_shift": args.energy_shift,
+    "vqa_num_replicas": args.vqa_num_replicas,
 }
 if args.h_vector_path is not None:
     default_args["h_vector_path"] = args.h_vector_path
@@ -77,13 +79,28 @@ if args.g_vector_path is not None:
     default_args["g_vector_path"] = args.g_vector_path
 trial_args_settings = {
     "vqa_num_annealing_steps": ("int", args.vqa_num_annealing_steps_min, args.vqa_num_annealing_steps_max, "log"),
-    "vqa_num_updates_per_step": ("int", args.vqa_num_updates_per_step_min, args.vqa_num_updates_per_step_max, "linear"),
-    "vqa_annealing_field_scale": ("float", args.vqa_annealing_field_scale_min, args.vqa_annealing_field_scale_max, "log"),
+    "vqa_num_updates_per_step": (
+        "int",
+        args.vqa_num_updates_per_step_min,
+        args.vqa_num_updates_per_step_max,
+        "linear",
+    ),
+    "vqa_annealing_field_scale": (
+        "float",
+        args.vqa_annealing_field_scale_min,
+        args.vqa_annealing_field_scale_max,
+        "log",
+    ),
     "vqa_catalyst_field_scale": ("float", args.vqa_catalyst_field_scale_min, args.vqa_catalyst_field_scale_max, "log"),
     "sgd_learning_rate": ("float", args.sgd_learning_rate_min, args.sgd_learning_rate_max, "log"),
     "sgd_momentum": ("float", args.sgd_momentum_min, args.sgd_momentum_max, "linear"),
     "sr_diagonal_shift": ("float", args.sr_diagonal_shift_min, args.sr_diagonal_shift_max, "log"),
-    "dbqs_unit_density_per_layer": ("float", args.dbqs_unit_density_per_layer_min, args.dbqs_unit_density_per_layer_max, "log"),
+    "dbqs_unit_density_per_layer": (
+        "float",
+        args.dbqs_unit_density_per_layer_min,
+        args.dbqs_unit_density_per_layer_max,
+        "log",
+    ),
     "mcmc_num_samples": ("int", args.mcmc_num_samples_min, args.mcmc_num_samples_max, "log"),
     "mcmc_num_sweep_steps": ("int", args.mcmc_num_sweep_steps_min, args.mcmc_num_sweep_steps_max, "log"),
 }
@@ -91,10 +108,12 @@ dynamic_args = {
     "target_energy": None,
     "save_path": None,
 }
-flag_args = {
-}
+flag_args = {}
 
-is_classical_target = (args.g_vector_path is None)  # If g_vector_path is not given, we assume it's a classical target Hamiltonian.
+is_classical_target = (
+    args.g_vector_path is None
+)  # If g_vector_path is not given, we assume it's a classical target Hamiltonian.
+
 
 def start_annealer(cfg: dict):
     cmd = [
@@ -142,17 +161,42 @@ def objective(trial):
         pass
 
     out_data = np.load(f"{annealer_args['save_path']}/data.npz")
-    obj_value = out_data["target_energy"][-1, 0]
 
-    trial.set_user_attr("Final Energy", out_data["target_energy"][-1, 0].real)
+    # for d in out_data:
+    #     print(f"{d}: {out_data[d].shape}")
+
+    best_replica = out_data["best_replica_index"]
+    obj_value = out_data["target_energy"][-1, 0, best_replica]
+
+    num_replicas = out_data["target_energy"].shape[2]
+
+    trial.set_user_attr(
+        "Final Energies",
+        [float(out_data["target_energy"][-1, 0, r].real) for r in range(num_replicas)],
+    )
     if is_classical_target:
-        trial.set_user_attr("Best Target Energy", out_data["best_energy_so_far"][-1])
-        trial.set_user_attr("Best Config", str(np.array((out_data["best_config"] + 1) / 2)))
-    trial.set_user_attr("Final Energy Variance", out_data["target_energy"][-1, 1].real)
+        # Expect arrays exposed by serialization: best_energy_so_far (T, R) and best_config (N, R)
+        if "best_energy_so_far" in out_data:
+            best_e = out_data["best_energy_so_far"]
+            trial.set_user_attr(
+                "Best Target Energies",
+                [float(best_e[-1, r].real) for r in range(best_e.shape[1])],
+            )
+        if "best_config" in out_data:
+            best_cfg = out_data["best_config"]
+            trial.set_user_attr(
+                "Best Configs",
+                [str(np.array((best_cfg[:, r] + 1) / 2)) for r in range(best_cfg.shape[1])],
+            )
+    trial.set_user_attr(
+        "Final Energy Variance",
+        [float(out_data["target_energy"][-1, 1, r].real) for r in range(num_replicas)],
+    )
     trial.set_user_attr("Num Params", int(out_data["num_params"]))
     trial.set_user_attr("Runtime", float(out_data["runtime"]))
 
     return obj_value
+
 
 def study_callback(study, trial):
     if study.best_value is not None and study.best_value < TARGET_OBJECTIVE_VALUE:
@@ -169,7 +213,7 @@ def main():
         study.set_user_attr(arg, default_args[arg])
     study.set_user_attr("Trial Args", trial_args_settings)
 
-    tpe_trials = NUM_TRIALS//5
+    tpe_trials = NUM_TRIALS // 5
     cmaes_trials = NUM_TRIALS - tpe_trials
 
     study.optimize(
@@ -180,7 +224,11 @@ def main():
     )
 
     optuna_sampler = optuna.samplers.TPESampler()
-    study = optuna.load_study(study_name=STUDY_NAME, storage=DB_STORAGE, sampler=optuna_sampler)
+    study = optuna.load_study(
+        study_name=STUDY_NAME,
+        storage=DB_STORAGE,
+        sampler=optuna_sampler,
+    )
     study.optimize(
         objective,
         n_trials=tpe_trials,
