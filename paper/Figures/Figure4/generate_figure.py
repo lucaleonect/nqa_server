@@ -361,6 +361,18 @@ def main():
     ax_main = fig.add_axes([0.08, 0.10, 0.84, 0.42])  # reduced height to create more gap
 
     line, = ax_main.plot(np.linspace(0,1,data["target_energy"][:, 0].size), data["target_energy"][:, 0])
+    # get the first -25 of the target energy curve
+    ##############
+    sol_found_at = 0
+    best_energy_thus_far = np.minimum.accumulate(data["target_energy"][:, 2])
+    for i in range(data["target_energy"][:, 0].size):
+        if best_energy_thus_far[i] < best_energy_thus_far[sol_found_at]:
+            sol_found_at = i
+    print("Solution found at iteration:", sol_found_at)
+    print("Target energy at solution:", data["target_energy"][sol_found_at, 0])
+    print("Best target energy:", best_energy_thus_far)
+    ax_main.scatter(sol_found_at/len(data["target_energy"][:, 0]), data["target_energy"][sol_found_at, 0], marker="*", color="black", s=100, zorder=3)
+    # ax_main.plot(np.linspace(0,1,data["target_energy"][:, 0].size), best_energy_thus_far, color="tab:blue", linestyle="--", label="Best target energy thus far")
 
     # Choose snapshot iterations (last inset = endpoint)
     xdata = line.get_xdata()
