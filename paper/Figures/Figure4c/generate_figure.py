@@ -2,11 +2,13 @@ import pandas as pd
 import numpy as np
 import json
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+from matplotlib.ticker import FormatStrFormatter
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 import os
 import ast
 from matplotlib.patches import ConnectionPatch  # added
-import matplotlib.patheffects as pe            # NEW: for text outline
+import matplotlib.patheffects as pe  # NEW: for text outline
 from qubo import QUBO_to_Ising
 
 CM = 1 / 2.54
@@ -30,45 +32,42 @@ def main():
     n_spins = Q.shape[0]
 
     J, h, C = QUBO_to_Ising(Q)
+    J = J * 4
+    h = h / np.sqrt(h.size)
     print("J shape: ", J.shape)
     print("h shape: ", h.shape)
     print("C shape: ", C.shape)
-
+    print(J.min(), J.max())
+    print(h.min(), h.max())
 
     plt.rcParams["figure.figsize"] = prx_figsize("single", aspect=0.7)
     fig, ax = plt.subplots(2, 1, sharex=True, gridspec_kw={"height_ratios": [0.9, 0.1]})
     vmax_j = np.max(np.abs(J))
-    vmin_j = -vmax_j
-    vmin_h = -np.max(np.abs(h))
     vmax_h = np.max(np.abs(h))
-    ax[0].pcolor(J, vmin=vmin_j, vmax=vmax_j, cmap="RdBu")
-    ax[0].set_ylabel("Spin index")
-    ax[1].pcolor(h.reshape(1,-1), vmin=vmin_h, vmax=vmax_h, cmap="RdBu")
+    vmax = max(vmax_j, vmax_h)
+    vmin = 0
+    base_cmap = plt.get_cmap("RdBu")
+    half_cmap = mcolors.LinearSegmentedColormap.from_list(
+        "RdBu_half",
+        base_cmap(np.linspace(0.5, 1.0, 256)),
+    )
+    im = ax[0].pcolor(J, vmin=vmin, vmax=vmax, cmap=half_cmap)
+    ax[0].set_title(r"$4J_{ij}$")
+    ax[0].set_ylabel("j")
+    ax[1].pcolor(h.reshape(1, -1), vmin=vmin, vmax=vmax, cmap=half_cmap)
     # No ticks on the y axis of h
     ax[1].set_yticks([])
-    ax[1].set_xlabel("Spin index")
+    ax[1].set_ylabel(r"$h_i/\sqrt{N}$")  # , rotation=45)
+    ax[1].yaxis.set_label_coords(-0.08, -0.15)
+    ax[1].set_xlabel("i")
+
+    # Shared colorbar to the right of both subplots (show only non-negative ticks)
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_ticks(np.linspace(0, vmax, 2))
+    cbar.ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
 
     plt.savefig("figure_JH_jssp.pdf")
-    J = np.load("./J_matrix_sk200_i0.npy")
-    h = np.zeros(J.shape[0])
-    print("J shape: ", J.shape)
-    print("h shape: ", h.shape)
 
-
-    plt.rcParams["figure.figsize"] = prx_figsize("single", aspect=0.7)
-    fig, ax = plt.subplots(2, 1, sharex=True, gridspec_kw={"height_ratios": [0.9, 0.1]})
-    vmax_j = np.max(np.abs(J))
-    vmin_j = -vmax_j
-    vmin_h = -1
-    vmax_h = 1
-    ax[0].pcolor(J, vmin=vmin_j, vmax=vmax_j, cmap="RdBu")
-    ax[0].set_ylabel("Spin index")
-    ax[1].pcolor(h.reshape(1,-1), vmin=vmin_h, vmax=vmax_h, cmap="RdBu")
-    # No ticks on the y axis of h
-    ax[1].set_yticks([])
-    ax[1].set_xlabel("Spin index")
-
-    plt.savefig("figure_JH_sk.pdf")
 
 if __name__ == "__main__":
     main()
