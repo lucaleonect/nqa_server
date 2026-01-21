@@ -341,7 +341,7 @@ def QUBO_to_Ising(Q):
 
     C_Q = 0.5 * (np.sum(Q) + np.sum(np.diag(Q)))
 
-    return J_Q, h_Q, C_Q
+    return J_Q/4, h_Q/2, C_Q/2
 
 
 def get_J_h(Q):
