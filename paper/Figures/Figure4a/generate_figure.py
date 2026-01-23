@@ -27,7 +27,10 @@ plt.style.use("../prx_quantum.mplstyle")
 
 def main():
     # il sample deve essere un dizionario con valori
-    Q = np.load("./matrix_Q_j5_op5_pruned.npy")
+    # Q = np.load("./matrix_Q_j5_op5_pruned.npy")
+    # Load Q from CSV
+    Q = np.loadtxt("./matrix_Q_j5_op5_pruned.csv", delimiter=",")
+
     print("Q shape: ", Q.shape)
     n_spins = Q.shape[0]
 
