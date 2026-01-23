@@ -21,6 +21,7 @@ class VariationalAnnealer:
         observables_dict: Optional[dict] = None,
         use_tqdm: Optional[bool] = None,
         log_every: Optional[int] = None,
+        log_params: Optional[bool] = None,
     ):
         if persistent_chains is None:
             persistent_chains = True
@@ -34,6 +35,8 @@ class VariationalAnnealer:
             num_finetuning_steps = 1
         if use_tqdm is None:
             use_tqdm = False
+        if log_params is None:
+            log_params = False
 
         annealing_schedule = jnp.concatenate(
             (
@@ -59,6 +62,7 @@ class VariationalAnnealer:
         self.num_finetuning_steps = num_finetuning_steps
         self.use_tqdm = use_tqdm
         self.log_every = log_every
+        self.log_params = log_params
         
         if self.annealing_schedule.shape[1] == 3:
             self.uses_catalyst = True
@@ -95,6 +99,8 @@ class VariationalAnnealer:
         step_data["avg_energy"] = avg_energy
         step_data["energy_var"] = energy_var
         step_data["magnetizations"] = mcmc_samples.mean(axis=0)
+        if self.log_params:
+            step_data["params"] = params
         # step_data["params"] = params
         for key, observable in self.observables_dict.items():
             step_data[key] = observable(params, mcmc_samples)
@@ -124,6 +130,8 @@ class VariationalAnnealer:
         data["magnetizations"] = []
         data["inst_energy"] = []
         # data["params"] = []
+        if self.log_params:
+            data["params"] = []
         for key in self.observables_dict.keys():
             data[key] = []
 
