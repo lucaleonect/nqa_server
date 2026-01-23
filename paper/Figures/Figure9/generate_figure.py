@@ -72,7 +72,7 @@ for i in range(10):
             )
         except:
             pass
-    ax1.set_ylabel(r"$\langle H_t \rangle$")
+    ax1.set_ylabel(r"$\langle H_T \rangle$")
     ax1.set_xlim(0, x_fit.max())
     ax2.scatter(
         instance_0_data[:, 2],

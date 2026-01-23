@@ -66,6 +66,18 @@ def main():
     cbar.set_ticks(np.linspace(0, vmax, 2))
     cbar.ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
 
+    # Add "a)" on the top left corner of the figure
+    fig.text(
+        -0.1,
+        1.05,
+        "a)",
+        transform=ax[0].transAxes,
+        fontweight="bold",
+        va="top",
+        ha="right",
+        path_effects=[pe.withStroke(linewidth=3, foreground="white")],
+    )
+
     plt.savefig("figure_JH_jssp.pdf")
 
 

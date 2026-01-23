@@ -223,6 +223,18 @@ def gantt_superposition(
     if title:
         ax.set_title(title)
 
+    # Add "b)" on the top left corner of the figure
+    ax.text(
+        -0.1,
+        1.05,
+        "b)",
+        transform=ax.transAxes,
+        fontweight="bold",
+        va="top",
+        ha="right",
+        path_effects=[pe.withStroke(linewidth=3, foreground="white")],
+    )
+
     plt.savefig(os.path.join(directory, "gantt_superposition_jssp.pdf"))
     plt.close()
     return True

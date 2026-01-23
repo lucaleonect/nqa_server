@@ -53,7 +53,7 @@ for band in range(2):
         marker="x",
         c="black",
     )
-ax1.set_ylabel(r"$\langle H_t \rangle$")
+ax1.set_ylabel(r"$\langle H_T \rangle$")
 ax1.set_xlabel(r"$\sigma^2$")
 ax1.set_xlim(0, x_fit.max())
 ax2.scatter(
