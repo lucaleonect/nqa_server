@@ -1,0 +1,5 @@
+num_spins,4
+T_full,1000
+P_original,14
+complex_flag,1
+num_points_grid,25
