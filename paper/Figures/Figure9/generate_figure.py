@@ -69,6 +69,8 @@ for i in range(10):
                 bands_fit_params[band]["var_fit"][0],
                 marker="x",
                 c="black",
+                s=30,
+                clip_on=False,
             )
         except:
             pass
@@ -89,13 +91,15 @@ for i in range(10):
                 bands_fit_params[band]["inverse_num_params"][0],
                 marker="x",
                 c="black",
+                s=30,
+                clip_on=False,
             )
         except:
             pass
     ax2.set_xlim(0, x_fit.max())
     ax3.hist(
         instance_0_data[:, 0],
-        bins=11,
+        bins=21,
         orientation="horizontal",
         color="black",
     )

@@ -52,6 +52,8 @@ for band in range(2):
         bands_fit_params[band]["var_fit"][0],
         marker="x",
         c="black",
+        s=30,
+        clip_on=False,
     )
 ax1.set_ylabel(r"$\langle H_T \rangle$")
 ax1.set_xlabel(r"$\sigma^2$")
@@ -70,6 +72,8 @@ for band in range(2):
         bands_fit_params[band]["inverse_num_params"][0],
         marker="x",
         c="black",
+        s=30,
+        clip_on=False,
     )
 ax2.set_xlabel(r"$N_\text{params}^{-1}\times 10^5$")
 ax2.set_xlim(0, x_fit.max())
@@ -77,13 +81,19 @@ ax3.hist(
     instance_0_data[:, 0],
     bins=51,
     orientation="horizontal",
-    color="gray",
-    alpha=0.5,
+    color="black",
 )
 ax3.set_xlabel("Counts")
 classical_energy = -75.20181311460237
 ax1.axhline(classical_energy, color="blue", linewidth=1.5, linestyle=":")   
 ax2.axhline(classical_energy, color="blue", linewidth=1.5, linestyle=":")
 ax3.axhline(classical_energy, color="blue", linewidth=1.5, linestyle=":")
+
+# Add labels a) b) c)
+ax1.text(-0.15, 1.05, "a)", transform=ax1.transAxes, fontweight="bold", va="top", ha="right")
+ax2.text(-0.05, 1.05, "b)", transform=ax2.transAxes, fontweight="bold", va="top", ha="right")
+ax3.text(-0.05, 1.05, "c)", transform=ax3.transAxes, fontweight="bold", va="top", ha="right")
+
+
 fig.tight_layout()
 fig.savefig("figure_tfsk_100_main.pdf")
