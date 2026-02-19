@@ -43,13 +43,21 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS name TEXT;
 """
 
 
-SELECT_NEXT = """
-SELECT * FROM jobs WHERE status = 'QUEUED' ORDER BY created_at ASC LIMIT 1;
-"""
-
-
-MARK_RUNNING = """
-UPDATE jobs SET status='RUNNING', updated_at=NOW() WHERE id=%s;
+CLAIM_NEXT_JOB = """
+WITH next_job AS (
+    SELECT id
+    FROM jobs
+    WHERE status = 'QUEUED'
+    ORDER BY created_at ASC
+    FOR UPDATE SKIP LOCKED
+    LIMIT 1
+)
+UPDATE jobs AS j
+SET status = 'RUNNING',
+    updated_at = NOW()
+FROM next_job
+WHERE j.id = next_job.id
+RETURNING j.*;
 """
 
 
@@ -201,15 +209,15 @@ def _build_solver_payload(job: dict) -> dict:
 def run_once(conn):
     """Select the next queued job, submit it to the solver, and update status fields."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute(SELECT_NEXT)
+        cur.execute(CLAIM_NEXT_JOB)
         job = cur.fetchone()
         if not job:
+            conn.commit()
             return False
         job_id = job["id"]
         job_name = job.get("name") if isinstance(job, dict) else None
         name_fragment = f" ({job_name})" if job_name else ""
         print(f"[scheduler] picked job {job_id}{name_fragment}")
-        cur.execute(MARK_RUNNING, (job_id,))
         conn.commit()
 
     try:
