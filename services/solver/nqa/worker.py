@@ -229,7 +229,6 @@ parser.add_argument(
     default=False,
     help="Use single precision arithmetics. Default is False, which uses double precision.",
 )
-
 args = parser.parse_args()
 # endregion
 
@@ -409,6 +408,46 @@ def main():
         prngkey,
         max_runtime=args.max_runtime,
     )
+    
+    # region: Resample and recompute with the optimized parameters
+    final_params = data["optimized_params"]
+    
+    prngkey, tempkey = jax.random.split(prngkey)
+    rvqs = DeepBoltzmannQuantumState(
+        num_spins=num_spins,
+        hidden_layers=dbqs_layers,
+        prngkey=tempkey,
+        num_samples=2**14,
+        num_thermalization_steps=2**14,
+        num_sweep_steps=2**14,
+        num_chains=2**14,
+        dtype=dtype,
+        use_bias=args.dbqs_use_bias,
+    )
+    
+    local_energy_target = build_local_tfsk_energy(
+        deep_boltzmann_quantum_state=rvqs,
+        J_matrix=J_matrix,
+        h_vector=h_vector,
+        g_vector=g_vector,
+        energy_shift=args.energy_shift,
+    )
+    measure_target = build_measurement_function(local_energy_target, return_best=is_classical_target)
+    
+    data["resampled_target_energy"] = []
+    data["resampled_target_energy_var"] = []
+    data["resampled_energy_mc_error"] = []
+    
+    for fp in final_params:
+        prngkey, tempkey = jax.random.split(prngkey)
+        resamples, _ = rvqs.generate_samples(tempkey, fp)
+        
+        resampled_target_energy, resampled_target_energy_var = measure_target(fp, resamples)
+        resampled_energy_mc_error = jnp.sqrt(resampled_target_energy_var / rvqs.num_samples)
+        data["resampled_target_energy"].append(resampled_target_energy)
+        data["resampled_target_energy_var"].append(resampled_target_energy_var)
+        data["resampled_energy_mc_error"].append(resampled_energy_mc_error)
+    # endregion
 
     if data is None:
         # make a failed.txt file

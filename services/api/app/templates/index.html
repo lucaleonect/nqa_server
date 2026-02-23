@@ -559,10 +559,9 @@
                     Target objective value (optional)
                     <input type="number" name="target_objective_value" step="any" placeholder="-1e5" />
                 </label>
-                <p class="hint">Displayed in the jobs list; up to 120 printable characters.</p>
             </fieldset>
             <fieldset>
-                <legend>Transverse-field SK problem</legend>
+                <legend>Transverse-field Sherrington-Kirkpatrick problem</legend>
                 <p class="hint math-hint">Provide the dense coupling matrix <code>J</code> together with optional longitudinal (<code>h</code>) and transverse (<code>g</code>) fields as .npy files. The solver minimises the transverse-field Sherrington–Kirkpatrick Hamiltonian:</p>
                 <div class="math-display">H = ∑<sub>ij</sub> J<sub>ij</sub> σ<sub>i</sub><sup>z</sup> σ<sub>j</sub><sup>z</sup> + ∑<sub>i</sub> h<sub>i</sub> σ<sub>i</sub><sup>z</sup> − ∑<sub>i</sub> g<sub>i</sub> σ<sub>i</sub><sup>x</sup></div>
                 <label>
@@ -598,12 +597,12 @@
                     Energy shift (optional)
                     <input type="number" name="energy_shift" value="0" step="any" />
                 </label>
-                <p class="hint">Leave optional vectors and uniform value fields blank for zero fields. Do not supply the longitudinal field inputs when using the QUBO box below.</p>
+                <p class="hint">Leave optional vectors and uniform value fields blank for zero fields.</p>
             </fieldset>
 
             <fieldset>
                 <legend>QUBO problem</legend>
-                <p class="hint">Submit a QUBO matrix <code>Q</code> (.npy). The solver minimises the quadratic form below and automatically converts the problem to the equivalent Ising <code>J</code> and <code>h</code>. Do not upload the same instance in both boxes.</p>
+                <p class="hint">Submit a QUBO matrix <code>Q</code> (.npy). The solver minimises the quadratic form below.</p>
                 <div class="math-display">f(x) = ∑<sub>i,j</sub> Q<sub>ij</sub> x<sub>i</sub> x<sub>j</sub>, &nbsp; x<sub>i</sub> ∈ {0, +1}</div>
                 <p class="hint">The annealer works in the Ising basis, so returned spin assignments are in {−1, +1}; map them back to binary with x<sub>i</sub> = (1 + σ<sub>i</sub>)/2 if needed.</p>
                 <label>
@@ -618,7 +617,6 @@
 
             <fieldset>
                 <legend>Study parameters</legend>
-                <p class="hint">Defaults mirror the solver's CLI. Adjust values to tune Optuna and annealer behaviour.</p>
                 <div class="study-grid">
                     {% for spec in study_arg_specs %}
                     <label>
