@@ -229,7 +229,6 @@ parser.add_argument(
     default=False,
     help="Use single precision arithmetics. Default is False, which uses double precision.",
 )
-
 args = parser.parse_args()
 # endregion
 
@@ -409,7 +408,7 @@ def main():
         prngkey,
         max_runtime=args.max_runtime,
     )
-
+    
     if data is None:
         # make a failed.txt file
         print_log("Failed")

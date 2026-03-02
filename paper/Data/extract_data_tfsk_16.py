@@ -8,7 +8,6 @@ DBSCAN_MIN_NUM_POINTS = 5
 DBSCAN_EPS = 0.01
 NUM_SUBSAMPLES = 100
 
-
 data = {"TFSK": {}}
 
 for i in range(10):
@@ -76,13 +75,19 @@ for i in range(10):
             )
 
         intercepts = np.array(
-            [data["TFSK"][f"Instance_{i}"][f"band_{label}"][f"var_subsample_fit_{n}"][3] for n in range(NUM_SUBSAMPLES)]
+            [
+                data["TFSK"][f"Instance_{i}"][f"band_{label}"][f"var_subsample_fit_{n}"][3]
+                for n in range(NUM_SUBSAMPLES)
+            ]
         )
         mean_intercept = np.mean(intercepts)
         std_intercept = np.std(intercepts)
 
         slopes = np.array(
-            [data["TFSK"][f"Instance_{i}"][f"band_{label}"][f"var_subsample_fit_{n}"][2] for n in range(NUM_SUBSAMPLES)]
+            [
+                data["TFSK"][f"Instance_{i}"][f"band_{label}"][f"var_subsample_fit_{n}"][2]
+                for n in range(NUM_SUBSAMPLES)
+            ]
         )
         mean_slope = np.mean(slopes)
         std_slope = np.std(slopes)
@@ -123,8 +128,6 @@ for i in range(10):
         print(f"Instance {i}, Band {label}")
         print(data["TFSK"][f"Instance_{i}"][f"band_{label}"][f"var_statistics"])
         print(data["TFSK"][f"Instance_{i}"][f"band_{label}"][f"ip_statistics"])
-
-
 
 
 # Save data to CSV

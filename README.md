@@ -2,6 +2,8 @@
 
 A self-contained platform that runs Neural Quantum Annealing (NQA) experiments behind a simple web dashboard. You drop in Ising or QUBO matrices, the system schedules a run on a GPU-enabled solver, and you can follow along from your browser.
 
+Note: it is also possible to download only the solver code in services/solver and run it directly in a Python environment with GPU access. 
+
 **Project highlights**
 - End-to-end workflow: upload problem → schedule run → download results.
 - Friendly web UI plus REST API for automation.

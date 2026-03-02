@@ -82,6 +82,7 @@ Mutually exclusive options:
 - `--sr_method`, `--sr_diagonal_shift`, `--sr_prefactor`: Natural-gradient solver choices and regularisation.
 - `--dbqs_num_hidden_layers`, `--dbqs_unit_density_per_layer`, `--dbqs_param_dtype`, `--dbqs_use_bias`: DBQS architecture and parameter dtype/bias toggles.
 - `--mcmc_num_samples`, `--mcmc_num_chains`, `--mcmc_num_sweep_steps`, `--mcmc_num_thermalization_steps`, `--mcmc_disable_persistent_markov_chains`: Sampler budget and persistence controls.
+- `--vqa_num_replicas`: Number of independent runs.
 
 Run `python -m nqa.worker -h` to see the full list and defaults.
 
@@ -161,23 +162,3 @@ pytest -q
 	- `nqa/utils/boltzmann_quantum_states.py`: `DeepBoltzmannQuantumState` model and MCMC.
 	- `nqa/utils/tdvp.py`: SR/minSR gradient estimators.
 	- `nqa/utils/operators.py`: Energy operators and schedule assembly.
-
-
-## Citing
-
-If you use this code, please cite the accompanying manuscript (`paper.pdf`). A BibTeX stub you can adapt:
-
-```bibtex
-@misc{nqa2025,
-	title        = {Neural Quantum Annealing},
-	author       = {Authors},
-	year         = {2025},
-	howpublished = {arXiv preprint},
-	note         = {See included paper.pdf}
-}
-```
-
-
-## License
-
-No license file is included.

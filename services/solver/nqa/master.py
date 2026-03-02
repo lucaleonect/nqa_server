@@ -171,26 +171,20 @@ def objective(trial):
     num_replicas = out_data["target_energy"].shape[2]
 
     trial.set_user_attr(
-        "Final Energies",
-        [float(out_data["target_energy"][-1, 0, r].real) for r in range(num_replicas)],
+        "Final Energies", [float(out_data["target_energy"][-1, 0, r].real) for r in range(num_replicas)]
     )
     if is_classical_target:
         # Expect arrays exposed by serialization: best_energy_so_far (T, R) and best_config (N, R)
         if "best_energy_so_far" in out_data:
             best_e = out_data["best_energy_so_far"]
-            trial.set_user_attr(
-                "Best Target Energies",
-                [float(best_e[-1, r].real) for r in range(best_e.shape[1])],
-            )
+            trial.set_user_attr("Best Target Energies", [float(best_e[-1, r].real) for r in range(best_e.shape[1])])
         if "best_config" in out_data:
             best_cfg = out_data["best_config"]
             trial.set_user_attr(
-                "Best Configs",
-                [str(np.array((best_cfg[:, r] + 1) / 2)) for r in range(best_cfg.shape[1])],
+                "Best Configs", [str(np.array((best_cfg[:, r] + 1) / 2)) for r in range(best_cfg.shape[1])]
             )
     trial.set_user_attr(
-        "Final Energy Variance",
-        [float(out_data["target_energy"][-1, 1, r].real) for r in range(num_replicas)],
+        "Final Energy Variance", [float(out_data["target_energy"][-1, 1, r].real) for r in range(num_replicas)]
     )
     trial.set_user_attr("Num Params", int(out_data["num_params"]))
     trial.set_user_attr("Runtime", float(out_data["runtime"]))

@@ -61,7 +61,9 @@ for i in range(10):
             if best_energy < EXACT_ENERGY:
                 print(f"Better energy than reference found. Δ = {best_energy - EXACT_ENERGY}")
             print(f"{key} completed trials: {len(completed)}")
-            print(f"{key}: final = {data['SK_100'][key]['e_res'][-1]:.3e}, best = {data['SK_100'][key]['e_best'][-1]:.3e}")
+            print(
+                f"{key}: final = {data['SK_100'][key]['e_res'][-1]:.3e}, best = {data['SK_100'][key]['e_best'][-1]:.3e}"
+            )
         except Exception as exc:
             print(f"{key} - study not found or failed to load ({exc}). Skipping …")
             pass
@@ -85,6 +87,7 @@ for i in range(10):
     energies = np.array([state.T @ J_matrix @ state for state in response.states])
     EXACT_ENERGY = energies.min()
     print(f"openjij gs energy {EXACT_ENERGY}")
+
     def handle_study(study_path: str, key: str):
         try:
             study = optuna.load_study(study_name=study_path, storage=DB_STORAGE_SK_200_1)
@@ -98,10 +101,13 @@ for i in range(10):
             if best_energy < EXACT_ENERGY:
                 print(f"Better energy than reference found. Δ = {best_energy - EXACT_ENERGY}")
             print(f"{key} completed trials: {len(completed)}")
-            print(f"{key}: final = {data['SK_200'][key]['e_res'][-1]:.3e}, best = {data['SK_200'][key]['e_best'][-1]:.3e}")
+            print(
+                f"{key}: final = {data['SK_200'][key]['e_res'][-1]:.3e}, best = {data['SK_200'][key]['e_best'][-1]:.3e}"
+            )
         except Exception as exc:
             print(f"{key} – study not found or failed to load ({exc}). Skipping …")
             pass
+
     def handle_study_fa(study_path: str, key: str):
         try:
             study = optuna.load_study(study_name=study_path, storage=DB_STORAGE_SK_200_2)
@@ -115,7 +121,9 @@ for i in range(10):
             if best_energy < EXACT_ENERGY:
                 print(f"Better energy than reference found. Δ = {best_energy - EXACT_ENERGY}")
             print(f"{key} completed trials: {len(completed)}")
-            print(f"{key}: final = {data['SK_200'][key]['e_res'][-1]:.3e}, best = {data['SK_200'][key]['e_best'][-1]:.3e}")
+            print(
+                f"{key}: final = {data['SK_200'][key]['e_res'][-1]:.3e}, best = {data['SK_200'][key]['e_best'][-1]:.3e}"
+            )
         except Exception as exc:
             print(f"{key} – study not found or failed to load ({exc}). Skipping …")
             pass
@@ -172,12 +180,14 @@ error_best_100 = data["SK_100"]["RBQS_NQA"]["e_best"]
 error_res_100 = data["SK_100"]["RBQS_NQA"]["e_res"]
 error_best_200 = data["SK_200"]["DBQS_auto"]["e_best"]
 error_res_200 = data["SK_200"]["DBQS_auto"]["e_res"]
-df = pd.DataFrame({
-    "SK 100 Best": error_best_100,
-    "SK 100 Final": error_res_100,
-    "SK 200 Best": error_best_200,
-    "SK 200 Final": error_res_200,
-})
+df = pd.DataFrame(
+    {
+        "SK 100 Best": error_best_100,
+        "SK 100 Final": error_res_100,
+        "SK 200 Best": error_best_200,
+        "SK 200 Final": error_res_200,
+    }
+)
 df.to_csv(save_path)
 
 # Figure 7 (histograms of all the best energy errors)
@@ -190,16 +200,18 @@ error_best_200_cRBM_NQA = data["SK_200"]["cRBM_NQA"]["e_best"]
 error_best_200_RBQS_SR = data["SK_200"]["RBQS_SR"]["e_best"]
 error_best_200_RBQS_NQA = data["SK_200"]["RBQS_NQA"]["e_best"]
 save_path = "../Figures/Figure7/data.csv"
-df = pd.DataFrame({
-    "cRBM_SR_100": error_best_100_cRBM_SR,
-    "cRBM_NQA_100": error_best_100_cRBM_NQA,
-    "RBQS_SR_100": error_best_100_RBQS_SR,
-    "RBQS_NQA_100": error_best_100_RBQS_NQA,
-    "cRBM_SR_200": error_best_200_cRBM_SR,
-    "cRBM_NQA_200": error_best_200_cRBM_NQA,
-    "RBQS_SR_200": error_best_200_RBQS_SR,
-    "RBQS_NQA_200": error_best_200_RBQS_NQA,
-})
+df = pd.DataFrame(
+    {
+        "cRBM_SR_100": error_best_100_cRBM_SR,
+        "cRBM_NQA_100": error_best_100_cRBM_NQA,
+        "RBQS_SR_100": error_best_100_RBQS_SR,
+        "RBQS_NQA_100": error_best_100_RBQS_NQA,
+        "cRBM_SR_200": error_best_200_cRBM_SR,
+        "cRBM_NQA_200": error_best_200_cRBM_NQA,
+        "RBQS_SR_200": error_best_200_RBQS_SR,
+        "RBQS_NQA_200": error_best_200_RBQS_NQA,
+    }
+)
 df.to_csv(save_path, index=False)
 
 # Figure 8 (histogram of SK_200 errors with cata)
@@ -208,18 +220,22 @@ error_best_200_cRBM_NQA_cata = data["SK_200"]["cRBM_NQA_cata"]["e_best"]
 error_best_200_RBQS_SR_cata = data["SK_200"]["RBQS_SR_cata"]["e_best"]
 error_best_200_RBQS_NQA_cata = data["SK_200"]["RBQS_NQA_cata"]["e_best"]
 save_path = "../Figures/Figure8/data.csv"
-df = pd.DataFrame({
-    "cRBM_SR_cata_200": error_best_200_cRBM_SR_cata,
-    "cRBM_NQA_cata_200": error_best_200_cRBM_NQA_cata,
-    "RBQS_SR_cata_200": error_best_200_RBQS_SR_cata,
-    "RBQS_NQA_cata_200": error_best_200_RBQS_NQA_cata,
-})
+df = pd.DataFrame(
+    {
+        "cRBM_SR_cata_200": error_best_200_cRBM_SR_cata,
+        "cRBM_NQA_cata_200": error_best_200_cRBM_NQA_cata,
+        "RBQS_SR_cata_200": error_best_200_RBQS_SR_cata,
+        "RBQS_NQA_cata_200": error_best_200_RBQS_NQA_cata,
+    }
+)
 df.to_csv(save_path, index=False)
 
 # Save exact gs energies
 save_path = "./ed_classical_energies_100.csv"
-df = pd.DataFrame({
-    "instance": list(range(10)),
-    "exact_energy": exact_energies_100,
-})
+df = pd.DataFrame(
+    {
+        "instance": list(range(10)),
+        "exact_energy": exact_energies_100,
+    }
+)
 df.to_csv(save_path, index=False)

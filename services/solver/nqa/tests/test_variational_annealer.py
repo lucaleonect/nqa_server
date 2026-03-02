@@ -244,6 +244,24 @@ def test_variational_annealer_invalid_inputs_raise():
             log_every=0,
         )
 
+    # invalid num_replicas
+    with pytest.raises(Exception):
+        VariationalAnnealer(
+            variational_quantum_state=dbqs,
+            parametric_gradient_estimator=est,
+            optimizer=optax.adam(1e-2),
+            annealing_schedule=_simple_schedule(4, False),
+            num_replicas=0,
+        )
+    with pytest.raises(Exception):
+        VariationalAnnealer(
+            variational_quantum_state=dbqs,
+            parametric_gradient_estimator=est,
+            optimizer=optax.adam(1e-2),
+            annealing_schedule=_simple_schedule(4, False),
+            num_replicas="2",
+        )
+
 
 def test_variational_annealer_logs_include_params_when_enabled():
     dbqs = _setup_dbqs_n4(num_samples=64, chains=8)

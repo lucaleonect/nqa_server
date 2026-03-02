@@ -37,9 +37,9 @@ The scheduler is a lightweight polling worker that bridges the database and the 
 
 `app/main.py` implements a `run_once(conn)` helper that encapsulates the main workflow:
 
-1. `SELECT_NEXT` retrieves the oldest queued job (`ORDER BY created_at ASC LIMIT 1`).
-2. If no job is found, the caller sleeps for four seconds; otherwise the loop continues after a two-second pause.
-3. Before contacting the solver, `MARK_RUNNING` sets the status to `RUNNING` and commits the transaction. This prevents duplicate scheduling when multiple worker instances run concurrently.
+1. `CLAIM_NEXT_JOB` atomically claims the oldest queued job using a single SQL statement (`FOR UPDATE SKIP LOCKED` + `UPDATE ... RETURNING`).
+2. If no job is claimed, the caller sleeps for four seconds; otherwise the loop continues after a two-second pause.
+3. The claim statement commits immediately after a row is returned, so each scheduler instance gets a unique job even when multiple replicas poll concurrently.
 4. The solver endpoint is called with `requests.post`. The payload contains the coupling matrix, optional vectors, study metadata (including any `study_args`/`target_objective_value`), the derived energy shift, and CUDA preferences required by `nqa/master.py`.
 5. Responses are interpreted as follows:
    - `response.ok == True`: the job is marked `DONE`, the raw response body is logged (truncated to 500 characters), and the loop proceeds.

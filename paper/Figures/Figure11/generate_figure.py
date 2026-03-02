@@ -17,14 +17,14 @@ def prx_figsize(width="single", aspect=1.5):
 plt.style.use("../prx_quantum.mplstyle")
 
 # Load the data from the csv files
-data_fit = pd.read_csv("tfsk_16_band_fits.csv")
-data_stats = pd.read_csv("tfsk_16_band_statistics.csv")
-data_points = pd.read_csv("tfsk_16_final_energies.csv")
-data_ed = pd.read_csv("ed_energies_16.csv")
+data_fit = pd.read_csv("tfsk_100_band_fits.csv")
+data_stats = pd.read_csv("tfsk_100_band_statistics.csv")
+data_points = pd.read_csv("tfsk_100_final_energies.csv")
+data_cl = pd.read_csv("ed_classical_energies_100.csv")
 
-plt.rcParams["figure.figsize"] = prx_figsize("double", aspect=1.)
+plt.rcParams["figure.figsize"] = prx_figsize("double", aspect=1.0)
 # Share y axis with subplots in the same line
-fig, axes = plt.subplots(10, 3, sharey="row", gridspec_kw={"width_ratios": [4, 4, 2]})
+fig, axes = plt.subplots(10, 3, sharey="row", sharex="col", gridspec_kw={"width_ratios": [4, 4, 2]})
 for i in range(10):
     (ax1, ax2, ax3) = axes[i]
 
@@ -43,17 +43,12 @@ for i in range(10):
         except IndexError:
             pass
     print(bands_fit_params)
+    classical_energy = data_cl[data_cl["instance"] == i]["exact_energy"].values[0]
+    ax1.axhline(classical_energy, color="blue", linewidth=1.5, linestyle=":")
+    ax2.axhline(classical_energy, color="blue", linewidth=1.5, linestyle=":")
+    ax3.axhline(classical_energy, color="blue", linewidth=1.5, linestyle=":")
 
-    instance_0_ed = data_ed[data_ed["instance"] == i]
-    instance_0_ed = np.array(instance_0_ed)[:, 1:]
-    print("ED Energies:", instance_0_ed)
 
-
-    # ED lines in all panels
-    for ed_energy in instance_0_ed:
-        ax1.axhline(ed_energy, color="red", alpha=0.5, linewidth=1.5, linestyle="-", label="ED Energy")
-        ax2.axhline(ed_energy, color="red", alpha=0.5, linewidth=1.5, linestyle="-", label="ED Energy")
-        ax3.axhline(ed_energy, color="red", alpha=0.5, linewidth=1.5, linestyle="-", label="ED Energy")
     ax1.scatter(
         instance_0_data[:, 1],
         instance_0_data[:, 0],
@@ -77,11 +72,11 @@ for i in range(10):
     ax1.set_ylabel(r"$\langle H_T \rangle$")
     ax1.set_xlim(0, x_fit.max())
     ax2.scatter(
-        instance_0_data[:, 2],
+        instance_0_data[:, 2]*(1e5),
         instance_0_data[:, 0],
         c="black",
     )
-    x_fit = np.linspace(0, instance_0_data[:, 2].max(), 100)
+    x_fit = np.linspace(0, instance_0_data[:, 2].max()*(1e5), 100)
     for band in range(2):
         try:
             y_fit = [bands_fit_params[band]["inverse_num_params"][0] + bands_fit_params[band]["inverse_num_params"][1]* x for x in x_fit]
@@ -104,7 +99,7 @@ for i in range(10):
         color="black",
     )
 ax1.set_xlabel(r"$\sigma^2$")
-ax2.set_xlabel(r"$N_\text{params}^{-1}$")
+ax2.set_xlabel(r"$N_\text{params}^{-1} \times 10^5$")
 ax3.set_xlabel("Counts")
 fig.tight_layout()
-fig.savefig("figure_tfsk_16_all.pdf")
+fig.savefig("figure_tfsk_100_all.pdf")

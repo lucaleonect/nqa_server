@@ -83,6 +83,7 @@ class VariationalAnnealer:
             observables_dict,
             use_tqdm,
             log_params,
+            num_replicas,
         )
 
         # Build expanded schedule with warmup/updates/finetuning repeats
@@ -175,7 +176,7 @@ class VariationalAnnealer:
             if not isinstance(key, str) or not callable(val):
                 raise ValueError("observables_dict must map strings to callables")
 
-        if num_replicas < 1 or not isinstance(num_replicas, int):
+        if isinstance(num_replicas, bool) or not isinstance(num_replicas, int) or num_replicas < 1:
             raise ValueError("num_replicas must be a positive integer")
 
     @partial(jax.jit, static_argnums=(0,))

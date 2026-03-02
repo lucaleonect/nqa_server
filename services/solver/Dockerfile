@@ -1,7 +1,8 @@
 FROM nvcr.io/nvidia/jax:25.08-py3
 WORKDIR /nqa
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN python -m pip install --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt
 COPY nqa /nqa/nqa
 ENV PYTHONUNBUFFERED=1
 CMD ["uvicorn", "nqa.main:app", "--host", "0.0.0.0", "--port", "8081"]
