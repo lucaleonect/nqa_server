@@ -370,6 +370,7 @@ class DeepBoltzmannQuantumState:
         prngkey, *tempkeys = jax.random.split(prngkey, len(self.num_units_list) + 1)
         p_odds = self.prob_odds_given_evens(biases, weights, units[::2])
         units[1::2] = [2 * jax.random.bernoulli(tempkeys[i], p=p) - 1 for i, p in enumerate(p_odds)]
+        prngkey, *tempkeys = jax.random.split(prngkey, len(self.num_units_list) + 1)
         p_evens = self.prob_evens_given_odds(biases, weights, units[1::2])
         units[::2] = [2 * jax.random.bernoulli(tempkeys[i], p=p) - 1 for i, p in enumerate(p_evens)]
         return prngkey, units
