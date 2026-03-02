@@ -79,6 +79,10 @@ class VariationalAnnealer:
         mcmc_endpoints,
         couplings,
     ):
+        grads, avg_energy, energy_var = self.parametric_gradient_estimator(params, mcmc_samples, couplings)
+        updates, opt_state = self.optimizer.update(grads, opt_state, params=params)
+        params = optax.apply_updates(params, updates)
+
         prngkey, tempkey = jax.random.split(prngkey)
         if self.persistent_chains:
             mcmc_samples, mcmc_endpoints = self.variational_quantum_state.update_samples(
@@ -91,13 +95,10 @@ class VariationalAnnealer:
                 prngkey=tempkey,
                 params=params,
             )
-        grads, avg_energy, energy_var = self.parametric_gradient_estimator(params, mcmc_samples, couplings)
-        updates, opt_state = self.optimizer.update(grads, opt_state, params=params)
-        params = optax.apply_updates(params, updates)
 
         step_data = {}
-        step_data["avg_energy"] = avg_energy
-        step_data["energy_var"] = energy_var
+        step_data["avg_energy"] = avg_energy # PRESTEP VALUE
+        step_data["energy_var"] = energy_var # PRESTEP VALUE
         step_data["magnetizations"] = mcmc_samples.mean(axis=0)
         if self.log_params:
             step_data["params"] = params
