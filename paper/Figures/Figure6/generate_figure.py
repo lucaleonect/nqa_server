@@ -17,83 +17,46 @@ def prx_figsize(width="single", aspect=1.5):
 plt.style.use("../prx_quantum.mplstyle")
 
 # Load the data from the csv files
-data_fit = pd.read_csv("tfsk_100_band_fits.csv")
-data_stats = pd.read_csv("tfsk_100_band_statistics.csv")
-data_points = pd.read_csv("tfsk_100_final_energies.csv")
+global_histo_data = pd.read_csv("data.csv", header=None).to_numpy()
 
-# Get all the instance 0 data and save the as np.array for plotting
-instance_0_data = data_points[data_points["instance"] == 0]
-instance_0_data = np.array(instance_0_data)[:, 1:]
+errors = np.array([e for e, r in global_histo_data])
+ranks = np.array([r for e, r in global_histo_data])
 
-instance_0_fit = data_stats[data_stats["instance"] == 0]
-bands_fit_params = {}
-for band in range(2):
-    bands_fit_params[band] = {}
-    band_data = instance_0_fit[instance_0_fit["band"] == band]
-    bands_fit_params[band]["var_fit"] = np.array(band_data[band_data["scaling"]=="variance"])[0][3:]
-    bands_fit_params[band]["inverse_num_params"] = np.array(band_data[band_data["scaling"]=="inverse_num_params"])[0][3:]
-print(bands_fit_params)
+bins = np.linspace(errors.min(), errors.max(), 102)
+bin_indices = np.digitize(errors, bins) - 1
+bin_indices = np.clip(bin_indices, 0, len(bins) - 2)
 
+n_bins = len(bins) - 1
+counts = np.zeros(n_bins)
+mean_ranks = np.full(n_bins, np.nan)
+for b in range(n_bins):
+    mask = bin_indices == b
+    counts[b] = mask.sum()
+    if mask.any():
+        mean_ranks[b] = ranks[mask].mean()
 
-plt.rcParams["figure.figsize"] = prx_figsize("double", aspect=0.3)
-fig, axes = plt.subplots(1, 3, sharey=True, gridspec_kw={"width_ratios": [4, 4, 2]})
-(ax1, ax2, ax3) = axes
-ax1.scatter(
-    instance_0_data[:, 1],
-    instance_0_data[:, 0],
-    c="black",
-)
-x_fit = np.linspace(0, instance_0_data[:, 1].max(), 100)
-for band in range(2):
-    y_fit = [bands_fit_params[band]["var_fit"][0] + bands_fit_params[band]["var_fit"][1]* x for x in x_fit]
-    ax1.plot(x_fit, y_fit, label=f"Band {band} Var. Fit", linestyle="--",c="black")
-    ax1.scatter(
-        0,
-        bands_fit_params[band]["var_fit"][0],
-        marker="x",
-        c="black",
-        s=30,
-        clip_on=False,
-    )
-ax1.set_ylabel(r"$\langle H_T \rangle$")
-ax1.set_xlabel(r"$\sigma^2$")
-ax1.set_xlim(0, x_fit.max())
-ax2.scatter(
-    instance_0_data[:, 2]*(10**5),
-    instance_0_data[:, 0],
-    c="black",
-)
-x_fit = np.linspace(0, instance_0_data[:, 2].max()*(10**5), 100)
-for band in range(2):
-    y_fit = [bands_fit_params[band]["inverse_num_params"][0] + bands_fit_params[band]["inverse_num_params"][1]* x for x in x_fit]
-    ax2.plot(x_fit, y_fit, label=f"Band {band} Inv. Fit", linestyle="--",c="black")
-    ax2.scatter(
-        0,
-        bands_fit_params[band]["inverse_num_params"][0],
-        marker="x",
-        c="black",
-        s=30,
-        clip_on=False,
-    )
-ax2.set_xlabel(r"$N_\text{params}^{-1}\times 10^5$")
-ax2.set_xlim(0, x_fit.max())
-ax3.hist(
-    instance_0_data[:, 0],
-    bins=51,
-    orientation="horizontal",
-    color="black",
-)
-ax3.set_xlabel("Counts")
-classical_energy = -75.20181311460237
-ax1.axhline(classical_energy, color="blue", linewidth=1.5, linestyle=":")   
-ax2.axhline(classical_energy, color="blue", linewidth=1.5, linestyle=":")
-ax3.axhline(classical_energy, color="blue", linewidth=1.5, linestyle=":")
+norm = plt.Normalize(vmin=np.nanmin(mean_ranks), vmax=np.nanmax(mean_ranks))
+cmap = plt.cm.viridis_r
 
-# Add labels a) b) c)
-ax1.text(-0.15, 1.05, "a)", transform=ax1.transAxes, fontweight="bold", va="top", ha="right")
-ax2.text(-0.05, 1.05, "b)", transform=ax2.transAxes, fontweight="bold", va="top", ha="right")
-ax3.text(-0.05, 1.05, "c)", transform=ax3.transAxes, fontweight="bold", va="top", ha="right")
+plt.rcParams["figure.figsize"] = prx_figsize("single", aspect=0.6)
+fig, ax = plt.subplots()
+for b in range(n_bins):
+    if counts[b] > 0:
+        color = cmap(norm(mean_ranks[b]))
+        ax.bar(
+            (bins[b] + bins[b + 1]) / 2,
+            counts[b],
+            width=(bins[1] - bins[0]),
+            color=color,
+            edgecolor="none",
+        )
 
+sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+sm.set_array([])
+fig.colorbar(sm, ax=ax, label="Mean Trial Rank")
 
-fig.tight_layout()
-fig.savefig("figure_tfsk_100_main.pdf")
+ax.axvline(0, color="red", linestyle="--")
+plt.xlabel(r"$\langle H_T \rangle - E_0^{\rm cl}$")
+ax.set_ylabel("Count")
+plt.savefig("fig_tfsk_color.pdf")
+plt.close()

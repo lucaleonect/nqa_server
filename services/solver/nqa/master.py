@@ -14,8 +14,8 @@ parser.add_argument("--energy_shift", type=float, default=0.0)
 parser.add_argument("--db_storage_path", type=str, default=None)
 parser.add_argument("--study_name", type=str, default=None)
 parser.add_argument("--num_trials", type=int, default=100)
-parser.add_argument("--vqa_num_annealing_steps_min", type=int, default=100)
-parser.add_argument("--vqa_num_annealing_steps_max", type=int, default=1000)
+parser.add_argument("--vqa_num_annealing_steps_min", type=int, default=10000)
+parser.add_argument("--vqa_num_annealing_steps_max", type=int, default=1000000)
 parser.add_argument("--vqa_num_updates_per_step_min", type=int, default=1)
 parser.add_argument("--vqa_num_updates_per_step_max", type=int, default=3)
 parser.add_argument("--vqa_annealing_field_scale_min", type=float, default=1e-1)
@@ -29,17 +29,17 @@ parser.add_argument("--sgd_momentum_max", type=float, default=0.9)
 parser.add_argument("--sr_diagonal_shift_min", type=float, default=1e-9)
 parser.add_argument("--sr_diagonal_shift_max", type=float, default=1e-2)
 parser.add_argument("--dbqs_num_hidden_layers", type=int, default=2)
-parser.add_argument("--dbqs_unit_density_per_layer_min", type=float, default=0.25)
-parser.add_argument("--dbqs_unit_density_per_layer_max", type=float, default=4.0)
-parser.add_argument("--mcmc_num_samples_min", type=int, default=2**3)
-parser.add_argument("--mcmc_num_samples_max", type=int, default=2**4)
-parser.add_argument("--mcmc_num_sweep_steps_min", type=int, default=2**2)
-parser.add_argument("--mcmc_num_sweep_steps_max", type=int, default=2**6)
+parser.add_argument("--dbqs_unit_density_per_layer_min", type=float, default=0.5)
+parser.add_argument("--dbqs_unit_density_per_layer_max", type=float, default=2.0)
+parser.add_argument("--mcmc_num_samples_min", type=int, default=2**7)
+parser.add_argument("--mcmc_num_samples_max", type=int, default=2**10)
+parser.add_argument("--mcmc_num_sweep_steps_min", type=int, default=2**4)
+parser.add_argument("--mcmc_num_sweep_steps_max", type=int, default=2**10)
 parser.add_argument("--num_workers", type=int, default=1)
 parser.add_argument("--cuda_device", type=int, default=0)
-parser.add_argument("--trial_max_runtime", type=int, default=60 * 30)
+parser.add_argument("--trial_max_runtime", type=int, default=60 * 60 * 2)
 parser.add_argument("--target_objective_value", type=float, default=-1e5)
-parser.add_argument("--vqa_num_replicas", type=int, default=3)
+parser.add_argument("--vqa_num_replicas", type=int, default=1)
 
 args = parser.parse_args()
 
@@ -78,7 +78,12 @@ if args.h_vector_path is not None:
 if args.g_vector_path is not None:
     default_args["g_vector_path"] = args.g_vector_path
 trial_args_settings = {
-    "vqa_num_annealing_steps": ("int", args.vqa_num_annealing_steps_min, args.vqa_num_annealing_steps_max, "log"),
+    "vqa_num_annealing_steps": (
+        "int",
+        args.vqa_num_annealing_steps_min,
+        args.vqa_num_annealing_steps_max,
+        "log",
+    ),
     "vqa_num_updates_per_step": (
         "int",
         args.vqa_num_updates_per_step_min,
@@ -91,18 +96,48 @@ trial_args_settings = {
         args.vqa_annealing_field_scale_max,
         "log",
     ),
-    "vqa_catalyst_field_scale": ("float", args.vqa_catalyst_field_scale_min, args.vqa_catalyst_field_scale_max, "log"),
-    "sgd_learning_rate": ("float", args.sgd_learning_rate_min, args.sgd_learning_rate_max, "log"),
-    "sgd_momentum": ("float", args.sgd_momentum_min, args.sgd_momentum_max, "linear"),
-    "sr_diagonal_shift": ("float", args.sr_diagonal_shift_min, args.sr_diagonal_shift_max, "log"),
+    "vqa_catalyst_field_scale": (
+        "float",
+        args.vqa_catalyst_field_scale_min,
+        args.vqa_catalyst_field_scale_max,
+        "log",
+    ),
+    "sgd_learning_rate": (
+        "float",
+        args.sgd_learning_rate_min,
+        args.sgd_learning_rate_max,
+        "log",
+    ),
+    "sgd_momentum": (
+        "float",
+        args.sgd_momentum_min,
+        args.sgd_momentum_max,
+        "linear",
+    ),
+    "sr_diagonal_shift": (
+        "float",
+        args.sr_diagonal_shift_min,
+        args.sr_diagonal_shift_max,
+        "log",
+    ),
     "dbqs_unit_density_per_layer": (
         "float",
         args.dbqs_unit_density_per_layer_min,
         args.dbqs_unit_density_per_layer_max,
         "log",
     ),
-    "mcmc_num_samples": ("int", args.mcmc_num_samples_min, args.mcmc_num_samples_max, "log"),
-    "mcmc_num_sweep_steps": ("int", args.mcmc_num_sweep_steps_min, args.mcmc_num_sweep_steps_max, "log"),
+    "mcmc_num_samples": (
+        "int",
+        args.mcmc_num_samples_min,
+        args.mcmc_num_samples_max,
+        "log",
+    ),
+    "mcmc_num_sweep_steps": (
+        "int",
+        args.mcmc_num_sweep_steps_min,
+        args.mcmc_num_sweep_steps_max,
+        "log",
+    ),
 }
 dynamic_args = {
     "target_energy": None,
@@ -117,8 +152,8 @@ is_classical_target = (
 
 def start_annealer(cfg: dict):
     cmd = [
-        "python3",
-        "worker.py",
+        "sbatch",
+        "submit_worker.slurm",
         *chain.from_iterable((f"--{k}", str(v)) for k, v in cfg.items()),
         *[f"--{f}" for f in flag_args],
     ]
@@ -188,6 +223,8 @@ def objective(trial):
     )
     trial.set_user_attr("Num Params", int(out_data["num_params"]))
     trial.set_user_attr("Runtime", float(out_data["runtime"]))
+    trial.set_user_attr("Resampled Energies", [float(e) for e in out_data["resampled_target_energy"]])
+    trial.set_user_attr("Resampled Energy Variances", [float(ev) for ev in out_data["resampled_target_energy_var"]])
 
     return obj_value
 
@@ -203,19 +240,30 @@ def study_callback(study, trial):
     if best_value is not None and best_value < TARGET_OBJECTIVE_VALUE:
         print(f"Target objective value {TARGET_OBJECTIVE_VALUE} reached. Stopping study.")
         study.stop()
+        
+    # If more than 100 completed trials, stop the study to avoid overloading the system
+    num_successful_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+    if num_successful_trials  > 100:
+        print(f"Study already has {num_successful_trials} completed trials. Stopping to avoid overloading the system.")
+        study.stop()
+
 
 
 def main():
     optuna_sampler = optuna.samplers.CmaEsSampler()
     study = optuna.create_study(
-        study_name=STUDY_NAME, storage=DB_STORAGE, direction="minimize", sampler=optuna_sampler
+        study_name=STUDY_NAME,
+        storage=DB_STORAGE,
+        direction="minimize",
+        sampler=optuna_sampler,
+        load_if_exists=True,
     )
     for arg in default_args:
         study.set_user_attr(arg, default_args[arg])
     study.set_user_attr("Trial Args", trial_args_settings)
 
-    tpe_trials = NUM_TRIALS // 5
-    cmaes_trials = NUM_TRIALS - tpe_trials
+    # tpe_trials = NUM_TRIALS // 5
+    cmaes_trials = NUM_TRIALS # - tpe_trials
 
     study.optimize(
         objective,
@@ -224,18 +272,18 @@ def main():
         callbacks=[study_callback],
     )
 
-    optuna_sampler = optuna.samplers.TPESampler()
-    study = optuna.load_study(
-        study_name=STUDY_NAME,
-        storage=DB_STORAGE,
-        sampler=optuna_sampler,
-    )
-    study.optimize(
-        objective,
-        n_trials=tpe_trials,
-        n_jobs=NUM_WORKERS,
-        callbacks=[study_callback],
-    )
+    # optuna_sampler = optuna.samplers.TPESampler()
+    # study = optuna.load_study(
+    #     study_name=STUDY_NAME,
+    #     storage=DB_STORAGE,
+    #     sampler=optuna_sampler,
+    # )
+    # study.optimize(
+    #     objective,
+    #     n_trials=tpe_trials,
+    #     n_jobs=NUM_WORKERS,
+    #     callbacks=[study_callback],
+    # )
 
 
 if __name__ == "__main__":

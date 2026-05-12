@@ -229,6 +229,12 @@ parser.add_argument(
     default=False,
     help="Use single precision arithmetics. Default is False, which uses double precision.",
 )
+parser.add_argument(
+    "--vqa_no_annealing",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help="Disable annealing and runs vanilla SR.",
+)
 args = parser.parse_args()
 # endregion
 
@@ -384,7 +390,10 @@ def main():
     # endregion
 
     optimizer = optax.sgd(args.sgd_learning_rate, momentum=args.sgd_momentum)
-    times = jnp.linspace(0.0, 1.0, args.vqa_num_annealing_steps)
+    if not args.vqa_no_annealing:
+        times = jnp.linspace(0.0, 1.0, args.vqa_num_annealing_steps)
+    else:
+        times = jnp.ones((args.vqa_num_annealing_steps,))
     if not args.vqa_no_catalyst:
         schedule = jax.vmap(lambda t: jnp.array([t, 1 - t, t * (1 - t)]))(times)
     else:
@@ -418,45 +427,45 @@ def main():
             
 
     if data is not None:
-        # region: Resample and recompute with the optimized parameters
-        final_params = data["optimized_params"]
+        # # region: Resample and recompute with the optimized parameters
+        # final_params = data["optimized_params"]
         
-        prngkey, tempkey = jax.random.split(prngkey)
-        rvqs = DeepBoltzmannQuantumState(
-            num_spins=num_spins,
-            hidden_layers=dbqs_layers,
-            prngkey=tempkey,
-            num_samples=2**16,
-            num_thermalization_steps=2**16,
-            num_sweep_steps=2**16,
-            num_chains=2**16,
-            dtype=dtype,
-            use_bias=args.dbqs_use_bias,
-        )
+        # prngkey, tempkey = jax.random.split(prngkey)
+        # rvqs = DeepBoltzmannQuantumState(
+        #     num_spins=num_spins,
+        #     hidden_layers=dbqs_layers,
+        #     prngkey=tempkey,
+        #     num_samples=2**16,
+        #     num_thermalization_steps=2**16,
+        #     num_sweep_steps=2**16,
+        #     num_chains=2**16,
+        #     dtype=dtype,
+        #     use_bias=args.dbqs_use_bias,
+        # )
         
-        local_energy_target = build_local_tfsk_energy(
-            deep_boltzmann_quantum_state=rvqs,
-            J_matrix=J_matrix,
-            h_vector=h_vector,
-            g_vector=g_vector,
-            energy_shift=args.energy_shift,
-        )
-        measure_target = build_measurement_function(local_energy_target, return_best=is_classical_target)
+        # local_energy_target = build_local_tfsk_energy(
+        #     deep_boltzmann_quantum_state=rvqs,
+        #     J_matrix=J_matrix,
+        #     h_vector=h_vector,
+        #     g_vector=g_vector,
+        #     energy_shift=args.energy_shift,
+        # )
+        # measure_target = build_measurement_function(local_energy_target, return_best=is_classical_target)
         
-        data["resampled_target_energy"] = []
-        data["resampled_target_energy_var"] = []
-        data["resampled_energy_mc_error"] = []
+        # data["resampled_target_energy"] = []
+        # data["resampled_target_energy_var"] = []
+        # data["resampled_energy_mc_error"] = []
         
-        for fp in final_params:
-            prngkey, tempkey = jax.random.split(prngkey)
-            resamples, _ = rvqs.generate_samples(tempkey, fp)
+        # for fp in final_params:
+        #     prngkey, tempkey = jax.random.split(prngkey)
+        #     resamples, _ = rvqs.generate_samples(tempkey, fp)
             
-            resampled_target_energy, resampled_target_energy_var = measure_target(fp, resamples)
-            resampled_energy_mc_error = jnp.sqrt(resampled_target_energy_var / rvqs.num_samples)
-            data["resampled_target_energy"].append(resampled_target_energy)
-            data["resampled_target_energy_var"].append(resampled_target_energy_var)
-            data["resampled_energy_mc_error"].append(resampled_energy_mc_error)
-        # endregion
+        #     resampled_target_energy, resampled_target_energy_var = measure_target(fp, resamples)
+        #     resampled_energy_mc_error = jnp.sqrt(resampled_target_energy_var / rvqs.num_samples)
+        #     data["resampled_target_energy"].append(resampled_target_energy)
+        #     data["resampled_target_energy_var"].append(resampled_target_energy_var)
+        #     data["resampled_energy_mc_error"].append(resampled_energy_mc_error)
+        # # endregion
 
         
         serialize_data(

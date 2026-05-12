@@ -1,3 +1,0 @@
-# Paper data and code
-This folder contains the code used for the simulations in the paper, the result of all the HPOs mentioned in the paper in sqlite databases (recomended exploring with optuna-dashboard), and the script used to make all the figures in the paper.
-Will not be updated.

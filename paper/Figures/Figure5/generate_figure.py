@@ -17,99 +17,78 @@ def prx_figsize(width="single", aspect=1.5):
 plt.style.use("../prx_quantum.mplstyle")
 
 # Load the data from the csv files
-data_fit = pd.read_csv("tfsk_16_band_fits.csv")
-data_stats = pd.read_csv("tfsk_16_band_statistics.csv")
-data_points = pd.read_csv("tfsk_16_final_energies.csv")
+data_points = pd.read_csv("tfsk_16_final_energies_a.csv")
+data_points_b = pd.read_csv("tfsk_16_final_energies_b.csv")
 data_ed = pd.read_csv("ed_energies_16.csv")
 
-plt.rcParams["figure.figsize"] = prx_figsize("double", aspect=0.3)
+plt.rcParams["figure.figsize"] = prx_figsize("double", aspect=0.4)
 # Share y axis with subplots in the same line
-fig, axes = plt.subplots(1, 3, sharey="row", gridspec_kw={"width_ratios": [4, 4, 2]})
-(ax1, ax2, ax3) = axes
+fig, axes = plt.subplots(2, 2, sharex="col", sharey="row", gridspec_kw={"width_ratios": [6, 4]})
+(ax1, ax2, ax3, ax4) = axes.flatten()
 i=0
 # Get all the instance 0 data and save the as np.array for plotting
 instance_0_data = data_points[data_points["instance"] == i]
 instance_0_data = np.array(instance_0_data)[:, 1:]
-
-instance_0_fit = data_stats[data_stats["instance"] == i]
-bands_fit_params = {}
-for band in range(2):
-    try:
-        bands_fit_params[band] = {}
-        band_data = instance_0_fit[instance_0_fit["band"] == band]
-        bands_fit_params[band]["var_fit"] = np.array(band_data[band_data["scaling"]=="variance"])[0][3:]
-        bands_fit_params[band]["inverse_num_params"] = np.array(band_data[band_data["scaling"]=="inverse_num_params"])[0][3:]
-    except IndexError:
-        pass
-print(bands_fit_params)
 
 instance_0_ed = data_ed[data_ed["instance"] == i]
 instance_0_ed = np.array(instance_0_ed)[:, 1:]
 print("ED Energies:", instance_0_ed)
 
 
-# ED lines in all panels
 for ed_energy in instance_0_ed:
-    ax1.axhline(ed_energy, color="red", alpha=0.5, linewidth=2.0, linestyle="-", label="ED Energy")
-    ax2.axhline(ed_energy, color="red", alpha=0.5, linewidth=2.0, linestyle="-", label="ED Energy")
-    ax3.axhline(ed_energy, color="red", alpha=0.5, linewidth=2.0, linestyle="-", label="ED Energy")
+    ax1.axhline(ed_energy, color="red", alpha=0.5, linewidth=1.0, linestyle="-", label="ED Energy")
+    ax2.axhline(ed_energy, color="red", alpha=0.5, linewidth=1.0, linestyle="-", label="ED Energy")
 ax1.scatter(
     instance_0_data[:, 1],
     instance_0_data[:, 0],
     c="black",
 )
-x_fit = np.linspace(0, instance_0_data[:, 1].max(), 100)
-for band in range(2):
-    try:
-        y_fit = [bands_fit_params[band]["var_fit"][0] + bands_fit_params[band]["var_fit"][1]* x for x in x_fit]
-        ax1.plot(x_fit, y_fit, label=f"Band {band} Var. Fit", linestyle="--",c="black")
-        ax1.scatter(
-            0,
-            bands_fit_params[band]["var_fit"][0],
-            marker="x",
-            c="black",
-            clip_on=False,
-            s=30,
-        )
-    except:
-        pass
 ax1.set_ylabel(r"$\langle H_T \rangle$")
-ax1.set_xlim(0, x_fit.max())
-ax2.scatter(
-    instance_0_data[:, 2],
-    instance_0_data[:, 0],
-    c="black",
-)
-x_fit = np.linspace(0, instance_0_data[:, 2].max(), 100)
-for band in range(2):
-    try:
-        y_fit = [bands_fit_params[band]["inverse_num_params"][0] + bands_fit_params[band]["inverse_num_params"][1]* x for x in x_fit]
-        ax2.plot(x_fit, y_fit, label=f"Band {band} Inv. Fit", linestyle="--",c="black")
-        ax2.scatter(
-            0,
-            bands_fit_params[band]["inverse_num_params"][0],
-            marker="x",
-            c="black",
-            clip_on=False,
-            s=30,
-        )
-    except:
-        pass
-ax2.set_xlim(0, x_fit.max())
-ax3.hist(
+ax2.hist(
     instance_0_data[:, 0],
     bins=51,
     orientation="horizontal",
     color="black",
+    align="left",
 )
 
 
 ax1.text(-0.20, 1.05, "a)", transform=ax1.transAxes, fontweight="bold", va="top", ha="right")
 ax2.text(-0.05, 1.05, "b)", transform=ax2.transAxes, fontweight="bold", va="top", ha="right")
-ax3.text(-0.05, 1.05, "c)", transform=ax3.transAxes, fontweight="bold", va="top", ha="right")
 
-ax1.set_xlabel(r"$\sigma^2$")
-ax2.set_xlabel(r"$N_\text{params}^{-1}$")
-ax3.set_xlabel("Counts")
+
+i=4
+# Get all the instance 0 data and save the as np.array for plotting
+instance_0_data = data_points_b[data_points_b["instance"] == i]
+instance_0_data = np.array(instance_0_data)[:, 1:]
+
+instance_0_ed = data_ed[data_ed["instance"] == i]
+instance_0_ed = np.array(instance_0_ed)[:, 1:]
+print("ED Energies:", instance_0_ed)
+
+
+for ed_energy in instance_0_ed:
+    ax3.axhline(ed_energy, color="red", alpha=0.5, linewidth=1.0, linestyle="-", label="ED Energy")
+    ax4.axhline(ed_energy, color="red", alpha=0.5, linewidth=1.0, linestyle="-", label="ED Energy")
+ax3.scatter(
+    instance_0_data[:, 1],
+    instance_0_data[:, 0],
+    c="black",
+)
+ax3.set_ylabel(r"$\langle H_T \rangle$")
+ax4.hist(
+    instance_0_data[:, 0],
+    bins=51,
+    orientation="horizontal",
+    color="black",
+    align="left",
+)
+
+
+ax3.text(-0.20, 1.05, "c)", transform=ax3.transAxes, fontweight="bold", va="top", ha="right")
+ax4.text(-0.05, 1.05, "d)", transform=ax4.transAxes, fontweight="bold", va="top", ha="right")
+
+ax3.set_xlabel(r"$\sigma^2$")
+ax4.set_xlabel("Counts")
 fig.tight_layout()
-fig.savefig("figure_tfsk_16_main.pdf")
+fig.savefig("figure_tfsk_16_i4.pdf")

@@ -1,0 +1,10 @@
+temp/
+services/solver/nqa/studies/
+services/solver/nqa/run*
+services/solver/nqa/submit*
+services/solver/nqa/slurm*
+services/solver/nqa/master_*
+paper_old/*
+paper/Data/HPOData/*/*/test_*
+paper/Data.zip
+paper/ziVESizh

@@ -399,6 +399,7 @@ class DeepBoltzmannQuantumState:
             for i in range(len(self.num_units_list))
         ]
 
+    @partial(jax.jit, static_argnums=(0,))
     def gibbs_step(
         self,
         prngkey: jnp.ndarray,
@@ -418,13 +419,17 @@ class DeepBoltzmannQuantumState:
         Returns:
             Tuple[jnp.ndarray, List[jnp.ndarray]]: Updated PRNGKey and new state of the units.
         """
+        new_units = units[::]
         prngkey, *tempkeys = jax.random.split(prngkey, len(self.num_units_list) + 1)
-        p_odds = self.prob_odds_given_evens(biases, weights, units[::2])
-        units[1::2] = [2 * jax.random.bernoulli(tempkeys[i], p=p) - 1 for i, p in enumerate(p_odds)]
+        p_odds = self.prob_odds_given_evens(biases, weights, new_units[::2])
+        new_odds = [2 * jax.random.bernoulli(tempkeys[i], p=p) - 1 for i, p in enumerate(p_odds)]
+        new_units[1::2] = new_odds
+
         prngkey, *tempkeys = jax.random.split(prngkey, len(self.num_units_list) + 1)
-        p_evens = self.prob_evens_given_odds(biases, weights, units[1::2])
-        units[::2] = [2 * jax.random.bernoulli(tempkeys[i], p=p) - 1 for i, p in enumerate(p_evens)]
-        return prngkey, units
+        p_evens = self.prob_evens_given_odds(biases, weights, new_units[1::2])
+        new_evens = [2 * jax.random.bernoulli(tempkeys[i], p=p) - 1 for i, p in enumerate(p_evens)]
+        new_units[::2] = new_evens
+        return prngkey, new_units
 
     def thermalization_fn(
         self,
@@ -672,7 +677,6 @@ class DeepBoltzmannQuantumState:
         """
         Runs a Gibbs chain with no sweeps or thermalization
         """
-        tempkeys = jax.random.split(prngkey, self.num_chains)
         if self.use_bias:
             (biases, weights) = self.unravel_params(params)
         else:

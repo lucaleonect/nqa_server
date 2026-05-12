@@ -13,22 +13,45 @@ def prx_figsize(width="single", aspect=1.5):
     w = {"single": PRX_SINGLE, "1.5": PRX_ONEHALF, "double": PRX_DOUBLE}[width]
     return (w, w * aspect)
 
+
 plt.style.use("../prx_quantum.mplstyle")
 
-data = pd.read_csv("data.csv")
 
-sizes = data["Size"].values
-mh_acorrs = data["MH Auto-corr"].values
-gibbs_acorrs = data["Gibbs Auto-corr"].values
+classical_gs_energies_100 = [
+    -75.20181311460237,
+    -71.87341830032535,
+    -75.04394373228551,
+    -75.31808585501405,
+    -79.60962573360997,
+    -73.01367758789947,
+    -74.69668933726089,
+    -72.85470668007179,
+    -71.94677698248434,
+    -73.3052934065986,
+]
 
-plt.rcParams["figure.figsize"] = prx_figsize("single", aspect=0.7)
+
+i = 6
+data_points = pd.read_csv(f"tfsk_100_{i}_final_energies.csv")
+print(data_points.keys())
+plt.rcParams["figure.figsize"] = prx_figsize("single", aspect=0.6)
+# Share y axis with subplots in the same line
+# fig, axes = plt.subplots(1, 2, sharey="row", gridspec_kw={"width_ratios": [6, 4]})
+# ax1, ax3 = axes
 plt.figure()
-plt.plot(4 * sizes, mh_acorrs, label="mh", marker=".")
-plt.plot(4 * sizes, gibbs_acorrs, label="gibbs", marker=".")
-plt.legend()
-plt.xlabel("Total number of spins")
-plt.ylabel("Mean autocorrelation time")
-plt.xscale("log")
-plt.yscale("log")
-plt.savefig("ac_times.pdf")
-plt.close()
+# Get all the instance 0 data and save the as np.array for plotting
+instance_0_data = data_points[data_points["Instance"] == i]
+instance_0_data = np.array(instance_0_data)[:, 1:]
+
+classical_energy = classical_gs_energies_100[i]
+plt.axhline(classical_energy, color="red", linestyle="--", label="Classical Energy")
+plt.scatter(
+    instance_0_data[:, 1],
+    instance_0_data[:, 0],
+    c="black",
+)
+plt.ylabel(r"$\langle H_T \rangle$")
+plt.xlabel(r"$\sigma^2$")
+plt.tight_layout()
+plt.savefig(f"figure_tfsk_100_i_{i}.pdf")
+
