@@ -14,7 +14,7 @@ Note: it is also possible to download only the solver code in services/solver an
 Neural Quantum Annealing (NQA) is the hybrid optimisation strategy introduced in `paper/paper.pdf`. It blends the adiabatic schedule of quantum annealing with neural-network wavefunctions called Deep Boltzmann Quantum States. The method starts from an easy reference Hamiltonian, gradually morphs it into the target Ising or QUBO problem, and repeatedly re-optimises the neural state with natural-gradient updates so the ground state is tracked throughout the sweep. This combination delivers exact ground states for large spin-glass instances while staying entirely in classical GPU-friendly software.
 
 ## Containers in a Nutshell
-If you are new to Docker: think of a container as a lightweight mini-computer that bundles the code and its dependencies. Running `docker compose up` starts the database, API, scheduler, and solver containers together so you do not have to install each piece manually. When you shut them down, your inputs and results stay on disk in the `shared-data/` folder.
+If you are new to Docker: think of a container as a lightweight mini-computer that bundles the code and its dependencies. Running `docker compose up` starts the database, API, scheduler, and solver containers together so you do not have to install each piece manually. Data persists in Docker volumes (`pgdata` and `shared-data`) across restarts unless you remove them.
 
 ## Before You Start
 
@@ -43,9 +43,9 @@ All three should print version information. If `nvidia-smi` fails, verify your G
 ## Getting the Code
 ```bash
 git clone <repo-url>
-cd NQA/Release
+cd nqa_server
 ```
-If you downloaded a zip, extract it and open the `NQA/Release` folder in your terminal or file explorer.
+If you downloaded a zip, extract it and open the repository root (the folder containing `docker-compose.yml`).
 
 ## Configure Environment Defaults
 The application reads connection details and solver defaults from `.env`.
@@ -68,6 +68,10 @@ Edit the checked-in `.env` to match your environment (it ships with working defa
    - Adjust Optuna search bounds or accept the defaults from `.env`.
    - Submit the job and monitor its status from the same page.
 
+4. **Optional: open the Optuna dashboard directly** – the API also exposes the dashboard service on port `8001`.
+   - Base URL: `http://localhost:8001`
+   - Per-job launch endpoint: `GET /jobs/{job_id}/dashboard` on the API (`http://localhost:8000`).
+
 ### UI Preview
 The front-end walks you through each stage:
 
@@ -84,14 +88,17 @@ The front-end walks you through each stage:
 - **Update to the latest code**: pull new changes (`git pull`) and rebuild the images with `docker compose build --pull`.
 
 ## Where Your Data Lives
-Job inputs and solver outputs are stored on the host inside `shared-data/` so they survive container restarts.
+Job inputs and solver outputs are stored in the Docker named volume `shared-data` (mounted at `/data` inside API, scheduler, and solver containers). Job metadata is stored in PostgreSQL's `pgdata` volume.
+
+Inside the shared volume, data is structured as:
 
 ```
-shared-data/
+shared-data volume
 ├── jobs/<job_id>/
 │   ├── J.npy
 │   ├── h_vector.npy
 │   ├── g_vector.npy
+│   ├── qubo_matrix.npy
 │   └── study_request.json
 └── studies/<study_name>/
     ├── optuna_db.db
@@ -101,6 +108,13 @@ shared-data/
 
 By default the study directory is named after the job ID; supplying a custom study name in the upload form stores results under `studies/<your-name>`. When you download a finished job from the UI the zip contains the corresponding study directory.
 
+To inspect where Docker stores the named volume on your machine:
+
+```bash
+docker volume inspect nqa_server_shared-data
+docker volume inspect nqa_server_pgdata
+```
+
 ## Architecture Overview
 At runtime four containers collaborate:
 ```mermaid
@@ -108,15 +122,18 @@ graph
     A[User] <-->|Job/Results| B[API]
     B <--> C[Postgres DB]
     B --> D[Scheduler]
-    D <-->|Statust updates| C
+   D <-->|Status updates| C
     D -->|POST /run| E[NQA Solver]
-    E -->|Save results| C
+   B <-->|Read/Write inputs+artifacts| F[Shared Data Volume]
+   D <-->|Read job inputs| F
+   E <-->|Read/Write studies| F
   
 ```
 - **API (`services/api`)**: FastAPI application serving the browser UI and REST endpoints. Also proxies Optuna Dashboard so you can inspect studies live.
 - **Scheduler (`services/scheduler`)**: Polls the database for queued jobs, requests runs from the solver, and updates job status.
-- **Solver (`services/solver`)**: Launches `nqa/master.py`, streams logs, and writes Optuna artefacts under `/data/studies/<job_id>`.
+- **Solver (`services/solver`)**: Launches `nqa/master.py`, streams logs, and writes Optuna artefacts under `/data/studies/<study_name>`.
 - **PostgreSQL (`db`)**: Persists job metadata, statuses, and error messages.
+- **Shared data volume (`shared-data`)**: Stores uploaded matrices, generated inputs, and Optuna study outputs.
 
 ## Repository Tour
 - `docker-compose.yml` – wiring between services, shared volumes, and environment variables.
@@ -124,23 +141,33 @@ graph
 - `services/api` – FastAPI UI + REST API implementation.
 - `services/scheduler` – background polling worker.
 - `services/solver` – solver service, JAX/Optax code (`nqa/`), and container definition.
-- `shared-data/` – host directory where job inputs and study outputs are stored.
+- `shared-data` (Docker volume) – persistent storage for job inputs and study outputs.
 - `docs/` – deeper service documentation (`api.md`, `scheduler.md`, `solver.md`).
-- `paper/` – reference material, including benchmarks and the NQA manuscript.
+- `paper/` – reference material.
+
+## API Quick Reference
+- `GET /` – upload and monitoring UI.
+- `POST /upload` – submit an Ising (`J.npy`) or QUBO (`qubo_matrix.npy`) job, plus optional metadata and study args.
+- `GET /jobs` – list all jobs.
+- `GET /jobs/{job_id}` – get one job's status.
+- `GET /jobs/{job_id}/download` – download study artifacts as zip (for `RUNNING`/`DONE`).
+- `GET /jobs/{job_id}/dashboard` – return the Optuna dashboard URL for that job.
+- `GET /jobs/{job_id}/optuna-db` – download `optuna_db.db` for that job.
 
 ## Day-to-Day Operations
 - **Follow logs**: `docker compose logs -f api` (or `scheduler`, `solver`, `db`).
-- **Check solver health**: `curl http://localhost:8081/health` should return `"ok"`.
+- **Check solver health**: `curl http://localhost:8081/health` should return `{"status":"ready"}`.
 - **Inspect the database**: `docker compose exec db psql -U $POSTGRES_USER $POSTGRES_DB` opens a psql shell. The `jobs` table records the latest status and any error snippet.
-- **Clean all persistent data**: `docker compose down -v` removes containers and named volumes (irreversible). Deleting specific subfolders inside `shared-data/` lets you remove individual jobs instead.
+- **Inspect persistent volumes**: `docker volume ls | grep nqa_server`.
+- **Clean all persistent data**: `docker compose down -v` removes containers and named volumes (irreversible).
 
 ## Developing and Extending
 Interested in modifying or extending the solver?
 - Run the services individually outside Docker if you have a Python 3.11 environment:
-  - API: `uvicorn app.main:app --reload --port 8000` (configure `DATABASE_URL` and `DATA_ROOT`).
-  - Solver: `uvicorn app.main:app --reload --port 8081` (set `DATA_ROOT`, `NQA_MASTER_SCRIPT`, and ensure GPU access).
-  - Scheduler: `python -m app.main` (needs database connection and solver URL).
-- Tests: inside `services/solver/nqa`, execute `pytest -q`. Some tests require CUDA.
+   - API (from `services/api`): `uvicorn app.main:app --reload --port 8000` (configure `DATABASE_URL`, `DATA_ROOT`, `OPTUNA_DASHBOARD_BIND_HOST`, and `OPTUNA_DASHBOARD_PORT`).
+   - Solver (from `services/solver`): `uvicorn nqa.main:app --reload --port 8081` (set `DATA_ROOT`, `NQA_MASTER_SCRIPT`, and ensure GPU access).
+   - Scheduler (from `services/scheduler`): `python -m app.main` (needs `DATABASE_URL`, `SOLVER_URL`, and `DATA_ROOT`).
+- Tests: inside `services/solver/nqa`, execute `python -m pytest -q`. Some tests require CUDA.
 - Formatting/linting: integrate `ruff`, `black`, or your preferred tools—no strict configuration ships with the repo.
 
 ## Troubleshooting Guide
@@ -151,7 +178,8 @@ Interested in modifying or extending the solver?
 | Upload rejected | Files not in `.npy` format or invalid dimensions | Save matrices as NumPy arrays; leave optional fields blank if unused. |
 | Jobs stuck in `QUEUED` | Scheduler cannot reach solver | Verify solver logs and `curl http://localhost:8081/health`. |
 | Long-running jobs block others | No timeout configured | Set `SOLVER_TIMEOUT` in `.env` to abort after a chosen duration. |
-| Want to start fresh | Stale data in `shared-data/` or named volumes | Run `docker compose down -v` (removes *all* data) or delete specific sub-folders under `shared-data/`. |
+| Optuna dashboard link fails | Port 8001 blocked or dashboard dependency unavailable | Confirm `optuna-dashboard` is installed in API image and that port 8001 is exposed. |
+| Want to start fresh | Stale data in named volumes | Run `docker compose down -v` (removes *all* data). |
 
 ## Additional Resources
 - `docs/api.md` – endpoint reference and payload shapes.
