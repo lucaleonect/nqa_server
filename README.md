@@ -64,6 +64,8 @@ Edit the checked-in `.env` to match your environment (it ships with working defa
    Leave this terminal open while you use the system. When everything is ready you will see log lines announcing that the API is listening on port 8000.
 3. **Visit the web UI** – open a browser and navigate to `http://localhost:8000`.
    - Upload `.npy` matrices (Ising `J` with optional `h`/`g`, or QUBO `Q`).
+     - For Ising problems you may also supply uniform scalar fields via `h_value` / `g_value` instead of full vector files; the scheduler expands them automatically.
+     - For QUBO problems the `h` field is computed automatically from the matrix and cannot be supplied separately.
    - Optionally set a job name or target objective value to annotate the run.
    - Adjust Optuna search bounds or accept the defaults from `.env`.
    - Submit the job and monitor its status from the same page.
@@ -71,6 +73,7 @@ Edit the checked-in `.env` to match your environment (it ships with working defa
 4. **Optional: open the Optuna dashboard directly** – the API also exposes the dashboard service on port `8001`.
    - Base URL: `http://localhost:8001`
    - Per-job launch endpoint: `GET /jobs/{job_id}/dashboard` on the API (`http://localhost:8000`).
+   - Only one dashboard process runs at a time. Requesting a dashboard for a new job automatically replaces the previous instance.
 
 ### UI Preview
 The front-end walks you through each stage:
@@ -140,10 +143,10 @@ graph
 - `.env` – default credentials and Optuna parameters surfaced in the upload form.
 - `services/api` – FastAPI UI + REST API implementation.
 - `services/scheduler` – background polling worker.
-- `services/solver` – solver service, JAX/Optax code (`nqa/`), and container definition.
+- `services/solver` – solver service, JAX/Optax code (`nqa/`), and container definition. See `services/solver/README.md` for solver-specific notes.
 - `shared-data` (Docker volume) – persistent storage for job inputs and study outputs.
 - `docs/` – deeper service documentation (`api.md`, `scheduler.md`, `solver.md`).
-- `paper/` – reference material.
+- `paper/` – reference material and research utilities, including `paper/nqa/utils/` with the original research code used to produce the paper results (distinct from the production solver under `services/solver/nqa/`).
 
 ## API Quick Reference
 - `GET /` – upload and monitoring UI.
@@ -177,7 +180,7 @@ Interested in modifying or extending the solver?
 | Solver job fails immediately | GPU unavailable inside container | Confirm `docker compose exec solver nvidia-smi` works; reinstall NVIDIA Container Toolkit if needed. |
 | Upload rejected | Files not in `.npy` format or invalid dimensions | Save matrices as NumPy arrays; leave optional fields blank if unused. |
 | Jobs stuck in `QUEUED` | Scheduler cannot reach solver | Verify solver logs and `curl http://localhost:8081/health`. |
-| Long-running jobs block others | No timeout configured | Set `SOLVER_TIMEOUT` in `.env` to abort after a chosen duration. |
+| Long-running jobs block others | No timeout configured | Add `SOLVER_TIMEOUT=<seconds>` to `.env` (not set by default) to abort after a chosen duration. |
 | Optuna dashboard link fails | Port 8001 blocked or dashboard dependency unavailable | Confirm `optuna-dashboard` is installed in API image and that port 8001 is exposed. |
 | Want to start fresh | Stale data in named volumes | Run `docker compose down -v` (removes *all* data). |
 
