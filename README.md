@@ -35,15 +35,11 @@ graph
 5. `scheduler` marks the job `DONE` (or `FAILED`) and stores the response.
 6. User downloads the result ZIP or opens the Optuna dashboard (`http://localhost:8001`).
 
----
-
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) with Compose v2
 - NVIDIA GPU with drivers installed
 - [`nvidia-container-toolkit`](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
-
----
 
 ## Quick Start
 
@@ -54,9 +50,6 @@ docker compose up --build
 ```
 
 and connect the web UI at http://localhost:8000.
-
-
----
 
 ## Web UI & REST API
 
@@ -75,8 +68,6 @@ Open http://localhost:8000 in a browser, fill in the form, and upload your probl
 | `GET` | `/jobs/{id}/download` | Download results as ZIP |
 | `GET` | `/jobs/{id}/dashboard` | Optuna dashboard for this job |
 | `GET` | `/jobs/{id}/optuna-db` | Download raw Optuna SQLite DB |
-
----
 
 ## Standalone Solver CLI
 
@@ -194,8 +185,6 @@ Results and the Optuna SQLite database are written to `studies/<study_name>/`. O
 optuna-dashboard sqlite:///studies/tfsk_run_01/optuna_db.db
 ```
 
----
-
 ## Input Formats
 
 ### Ising (native)
@@ -212,8 +201,6 @@ Upload a `Q.npy` matrix of shape `(N, N)`. The API automatically converts it to 
 
 $$J_{ij} = Q_{ij}/4, \quad h_i = \frac{1}{2}\sum_j Q_{ij}, \quad C = \text{const}$$
 
----
-
 ## Benchmarks
 
 The methods implemented in this repository were evaluated on the following problem classes (see `paper/`):
@@ -225,8 +212,6 @@ The methods implemented in this repository were evaluated on the following probl
 | Job Shop Scheduling (JSSP) | Various | Combinatorial optimization |
 
 Benchmark instances and hyperparameter optimization data are in `paper/Data/`. Figure generation scripts are in `paper/Figures/`.
-
----
 
 ## Paper
 
