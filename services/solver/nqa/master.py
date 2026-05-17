@@ -262,8 +262,8 @@ def main():
         study.set_user_attr(arg, default_args[arg])
     study.set_user_attr("Trial Args", trial_args_settings)
 
-    # tpe_trials = NUM_TRIALS // 5
-    cmaes_trials = NUM_TRIALS # - tpe_trials
+    tpe_trials = NUM_TRIALS // 5
+    cmaes_trials = NUM_TRIALS  - tpe_trials
 
     study.optimize(
         objective,
@@ -272,18 +272,18 @@ def main():
         callbacks=[study_callback],
     )
 
-    # optuna_sampler = optuna.samplers.TPESampler()
-    # study = optuna.load_study(
-    #     study_name=STUDY_NAME,
-    #     storage=DB_STORAGE,
-    #     sampler=optuna_sampler,
-    # )
-    # study.optimize(
-    #     objective,
-    #     n_trials=tpe_trials,
-    #     n_jobs=NUM_WORKERS,
-    #     callbacks=[study_callback],
-    # )
+    optuna_sampler = optuna.samplers.TPESampler()
+    study = optuna.load_study(
+        study_name=STUDY_NAME,
+        storage=DB_STORAGE,
+        sampler=optuna_sampler,
+    )
+    study.optimize(
+        objective,
+        n_trials=tpe_trials,
+        n_jobs=NUM_WORKERS,
+        callbacks=[study_callback],
+    )
 
 
 if __name__ == "__main__":
