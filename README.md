@@ -220,3 +220,10 @@ The scientific methodology behind this repository is described in:
 > `paper/paper.pdf`
 
 The paper covers the DBQS ansatz, the VQA algorithm, stochastic reconfiguration variants, and benchmark results on SK, TFSK, and JSSP instances.
+
+## Acknowledgements
+
+This project relies on the following open-source libraries:
+
+- **[JAX](https://github.com/google/jax)** — high-performance numerical computing and automatic differentiation on GPU/TPU, which powers the variational quantum annealing solver.
+- **[Optuna](https://github.com/optuna/optuna)** — automatic hyperparameter optimization framework used to tune the VQA and MCMC parameters across trials.
