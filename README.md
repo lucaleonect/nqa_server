@@ -8,7 +8,7 @@ A microservices platform for solving **combinatorial optimization problems** (in
 
 NQA solves problems expressed as an Ising Hamiltonian:
 
-$$H = \sum_{i<j} J_{ij}\,\sigma_i^z\sigma_j^z + \sum_i h_i\,\sigma_i^z + \sum_i g_i\,\sigma_i^x$$
+$H = \sum_{i<j} J_{ij}\,\sigma_i^z\sigma_j^z + \sum_i h_i\,\sigma_i^z + \sum_i g_i\,\sigma_i^x$
 
 where $J_{ij}$ is the coupling matrix, $h_i$ the longitudinal field, and $g_i$ the transverse field.
 
