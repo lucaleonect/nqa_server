@@ -2,6 +2,8 @@
 
 A microservices platform for solving **combinatorial optimization problems** (in Ising / QUBO formulation) and **quantum spin glasses** (transverse-field Sherrington-Kirkpatrick models) using variational quantum annealing with neural-network quantum states. Problems are submitted via a REST API or web UI; a GPU-accelerated solver optimizes them with automatic hyperparameter search via Optuna.
 
+Detailed explaination of the ideas behind NQA can be found in the paper https://arxiv.org/abs/2605.15899
+
 ## Background
 
 ### Problem formulation
