@@ -18,6 +18,7 @@ from typing import Callable, Dict, Optional, Sequence, Tuple, Union, cast
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from starlette.background import BackgroundTask
 from zipfile import ZipFile
 
 from sqlalchemy import inspect as sa_inspect, text
@@ -47,6 +48,17 @@ os.makedirs(STUDY_ROOT, exist_ok=True)
 
 
 logger = logging.getLogger(__name__)
+
+
+def _cleanup_temp_file(path: str) -> None:
+    """Best-effort cleanup for temporary response files."""
+
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        return
+    except OSError as exc:  # pragma: no cover - defensive logging only
+        logger.warning("failed to delete temporary file %s: %s", path, exc)
 
 
 def _load_env_study_default(
@@ -1009,13 +1021,21 @@ def download_results(job_id: str):
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{job_id}.zip")
         tmp_zip = tmp.name
         tmp.close()
-        with ZipFile(tmp_zip, "w") as z:
-            for root, _, files in os.walk(j.result_dir):
-                for fn in files:
-                    fp = os.path.join(root, fn)
-                    arc = os.path.relpath(fp, j.result_dir)
-                    z.write(fp, arc)
-        return FileResponse(tmp_zip, filename=f"results_{job_id}.zip")
+        try:
+            with ZipFile(tmp_zip, "w") as z:
+                for root, _, files in os.walk(j.result_dir):
+                    for fn in files:
+                        fp = os.path.join(root, fn)
+                        arc = os.path.relpath(fp, j.result_dir)
+                        z.write(fp, arc)
+        except Exception:
+            _cleanup_temp_file(tmp_zip)
+            raise
+        return FileResponse(
+            tmp_zip,
+            filename=f"results_{job_id}.zip",
+            background=BackgroundTask(_cleanup_temp_file, tmp_zip),
+        )
 
 
 @app.get("/jobs/{job_id}/dashboard")
