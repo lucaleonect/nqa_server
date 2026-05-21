@@ -152,8 +152,8 @@ is_classical_target = (
 
 def start_annealer(cfg: dict):
     cmd = [
-        "sbatch",
-        "submit_worker.slurm",
+        "python3",
+        "worker.py",
         *chain.from_iterable((f"--{k}", str(v)) for k, v in cfg.items()),
         *[f"--{f}" for f in flag_args],
     ]
