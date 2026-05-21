@@ -147,13 +147,13 @@ def _sanitize_name(raw: Optional[str]) -> str:
 
 
 def _prepare_study_dir(study_id: str) -> Path:
-    """Create and return a fresh solver study directory for ``study_id``."""
+    """Create and return the solver study directory for ``study_id``."""
     studies_root = (DATA_ROOT / "studies").resolve()
     study_dir = (studies_root / study_id).resolve()
     if studies_root not in study_dir.parents and study_dir != studies_root:
         raise HTTPException(status_code=400, detail="study path escapes data root")
     try:
-        study_dir.mkdir(parents=True, exist_ok=False)
+        study_dir.mkdir(parents=True, exist_ok=True)
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail="study name already exists; choose a different name") from exc
     return study_dir
@@ -162,7 +162,10 @@ def _prepare_study_dir(study_id: str) -> Path:
 def _persist_inputs(study_dir: Path, j_matrix: np.ndarray, h_vector: Optional[np.ndarray], g_vector: Optional[np.ndarray]):
     """Persist study inputs inside ``study_dir`` and return their filesystem paths."""
     inputs_dir = study_dir / "inputs"
-    inputs_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        inputs_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail="study name already exists; choose a different name") from exc
     j_path = inputs_dir / "J.npy"
     np.save(j_path, j_matrix)
     h_path = None
