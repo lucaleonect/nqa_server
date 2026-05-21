@@ -240,13 +240,6 @@ def study_callback(study, trial):
     if best_value is not None and best_value < TARGET_OBJECTIVE_VALUE:
         print(f"Target objective value {TARGET_OBJECTIVE_VALUE} reached. Stopping study.")
         study.stop()
-        
-    # If more than 100 completed trials, stop the study to avoid overloading the system
-    num_successful_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
-    if num_successful_trials  > 100:
-        print(f"Study already has {num_successful_trials} completed trials. Stopping to avoid overloading the system.")
-        study.stop()
-
 
 
 def main():
@@ -263,7 +256,7 @@ def main():
     study.set_user_attr("Trial Args", trial_args_settings)
 
     tpe_trials = NUM_TRIALS // 5
-    cmaes_trials = NUM_TRIALS  - tpe_trials
+    cmaes_trials = NUM_TRIALS - tpe_trials
 
     study.optimize(
         objective,
