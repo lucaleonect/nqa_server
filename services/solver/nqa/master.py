@@ -149,6 +149,9 @@ is_classical_target = (
     args.g_vector_path is None
 )  # If g_vector_path is not given, we assume it's a classical target Hamiltonian.
 
+WORKER_POLL_INTERVAL_SECONDS = 5
+WORKER_RUNTIME_GRACE_SECONDS = 300
+
 
 def start_annealer(cfg: dict):
     cmd = [
@@ -158,6 +161,46 @@ def start_annealer(cfg: dict):
         *[f"--{f}" for f in flag_args],
     ]
     return subprocess.Popen(cmd)
+
+
+def stop_annealer(process: subprocess.Popen):
+    if process.poll() is not None:
+        return
+
+    process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def wait_for_trial_output(process: subprocess.Popen, save_path: str, max_runtime: int):
+    finished_path = f"{save_path}/finished.txt"
+    failed_path = f"{save_path}/failed.txt"
+    data_path = f"{save_path}/data.npz"
+    deadline = time.monotonic() + max_runtime + WORKER_RUNTIME_GRACE_SECONDS
+
+    while True:
+        finished_exists = os.path.exists(finished_path)
+        failed_exists = os.path.exists(failed_path)
+
+        if finished_exists:
+            return failed_exists, None
+
+        return_code = process.poll()
+        if return_code is not None:
+            if failed_exists:
+                return True, None
+            if return_code == 0 and os.path.exists(data_path):
+                return False, None
+            return True, f"worker exited with code {return_code} before writing completion markers"
+
+        if time.monotonic() >= deadline:
+            stop_annealer(process)
+            return True, f"worker exceeded runtime budget of {max_runtime} seconds"
+
+        time.sleep(WORKER_POLL_INTERVAL_SECONDS)
 
 
 def objective(trial):
@@ -173,29 +216,38 @@ def objective(trial):
     dynamic_args["save_path"] = f"{STUDY_NAME}/test_{trial.number}"
     try:
         dynamic_args["target_energy"] = trial.study.best_value
-    except:
+    except Exception:
         dynamic_args["target_energy"] = 100
 
     annealer_args = {**default_args, **trial_args, **dynamic_args}
-    new_simulation = start_annealer(annealer_args)
-    new_simulation.wait()  # Unfortunately this doesn't work, as the process finishes immediately after the job is submitted
-
-    while True:
-        try:
-            with open(f"{dynamic_args['save_path']}/finished.txt", "r") as f:
-                break
-        except FileNotFoundError:
-            time.sleep(15)
-
-    # if failed.txt exists, return None
     try:
-        with open(f"{dynamic_args['save_path']}/failed.txt", "r") as f:
-            print(f"Trial {trial.number} failed.")
-            return None
-    except FileNotFoundError:
-        pass
+        new_simulation = start_annealer(annealer_args)
+    except OSError as exc:
+        print(f"Trial {trial.number} failed to start worker: {exc}")
+        return None
 
-    out_data = np.load(f"{annealer_args['save_path']}/data.npz")
+    trial_failed, failure_reason = wait_for_trial_output(
+        new_simulation,
+        annealer_args["save_path"],
+        annealer_args["max_runtime"],
+    )
+    if failure_reason is not None:
+        print(f"Trial {trial.number} failed: {failure_reason}.")
+        return None
+    if trial_failed:
+        print(f"Trial {trial.number} failed.")
+        return None
+
+    data_path = f"{annealer_args['save_path']}/data.npz"
+    if not os.path.exists(data_path):
+        print(f"Trial {trial.number} failed: missing {data_path}.")
+        return None
+
+    try:
+        out_data = np.load(data_path)
+    except Exception as exc:
+        print(f"Trial {trial.number} failed to load results: {exc}")
+        return None
 
     # for d in out_data:
     #     print(f"{d}: {out_data[d].shape}")
