@@ -147,11 +147,15 @@ def _sanitize_name(raw: Optional[str]) -> str:
 
 
 def _prepare_study_dir(study_id: str) -> Path:
-    """Create (if necessary) and return the solver's study directory for ``study_id``."""
-    study_dir = (DATA_ROOT / "studies" / study_id).resolve()
-    if DATA_ROOT not in study_dir.parents and study_dir != DATA_ROOT:
+    """Create and return a fresh solver study directory for ``study_id``."""
+    studies_root = (DATA_ROOT / "studies").resolve()
+    study_dir = (studies_root / study_id).resolve()
+    if studies_root not in study_dir.parents and study_dir != studies_root:
         raise HTTPException(status_code=400, detail="study path escapes data root")
-    study_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        study_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail="study name already exists; choose a different name") from exc
     return study_dir
 
 
