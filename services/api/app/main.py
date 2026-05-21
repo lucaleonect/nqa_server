@@ -139,7 +139,7 @@ _STUDY_ARG_SPECS: "OrderedDict[str, _StudyArgSpec]" = OrderedDict(
         _build_spec("sgd_momentum_max", "SGD momentum (max)", "float", 0.9, 0.0),
         _build_spec("sr_diagonal_shift_min", "SR diagonal shift (min)", "float", 1e-9, 0.0),
         _build_spec("sr_diagonal_shift_max", "SR diagonal shift (max)", "float", 1e-2, 0.0),
-        _build_spec("dbqs_num_hidden_layers", "DBQS hidden layers", "int", 2, 1),
+        _build_spec("dbqs_num_hidden_layers_max", "DBQS hidden layers (max)", "int", 5, 1),
         _build_spec(
             "dbqs_unit_density_per_layer_min",
             "DBQS unit density per layer (min)",

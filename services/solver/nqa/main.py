@@ -43,7 +43,7 @@ _ALLOWED_STUDY_ARGS: Dict[str, Tuple[str, Optional[float]]] = {
     "sgd_momentum_max": ("float", 0.0),
     "sr_diagonal_shift_min": ("float", 0.0),
     "sr_diagonal_shift_max": ("float", 0.0),
-    "dbqs_num_hidden_layers": ("int", 1),
+    "dbqs_num_hidden_layers_max": ("int", 1),
     "dbqs_unit_density_per_layer_min": ("float", 0.0),
     "dbqs_unit_density_per_layer_max": ("float", 0.0),
     "mcmc_num_samples_min": ("int", 1),

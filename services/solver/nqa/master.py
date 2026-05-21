@@ -28,7 +28,7 @@ parser.add_argument("--sgd_momentum_min", type=float, default=0)
 parser.add_argument("--sgd_momentum_max", type=float, default=0.9)
 parser.add_argument("--sr_diagonal_shift_min", type=float, default=1e-9)
 parser.add_argument("--sr_diagonal_shift_max", type=float, default=1e-2)
-parser.add_argument("--dbqs_num_hidden_layers", type=int, default=2)
+parser.add_argument("--dbqs_num_hidden_layers_max", type=int, default=5)
 parser.add_argument("--dbqs_unit_density_per_layer_min", type=float, default=0.5)
 parser.add_argument("--dbqs_unit_density_per_layer_max", type=float, default=2.0)
 parser.add_argument("--mcmc_num_samples_min", type=int, default=2**7)
@@ -69,7 +69,6 @@ default_args = {
     "vqa_num_finetuning_steps": 100,
     "dbqs_param_dtype": "complex",
     "mcmc_num_thermalization_steps": 2**7,
-    "dbqs_num_hidden_layers": args.dbqs_num_hidden_layers,
     "energy_shift": args.energy_shift,
     "vqa_num_replicas": args.vqa_num_replicas,
 }
@@ -119,6 +118,12 @@ trial_args_settings = {
         args.sr_diagonal_shift_min,
         args.sr_diagonal_shift_max,
         "log",
+    ),
+    "dbqs_num_hidden_layers": (
+        "int",
+        1,
+        args.dbqs_num_hidden_layers_max,
+        "linear",
     ),
     "dbqs_unit_density_per_layer": (
         "float",
