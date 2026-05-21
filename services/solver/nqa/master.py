@@ -223,8 +223,8 @@ def objective(trial):
     )
     trial.set_user_attr("Num Params", int(out_data["num_params"]))
     trial.set_user_attr("Runtime", float(out_data["runtime"]))
-    trial.set_user_attr("Resampled Energies", [float(e) for e in out_data["resampled_target_energy"]])
-    trial.set_user_attr("Resampled Energy Variances", [float(ev) for ev in out_data["resampled_target_energy_var"]])
+    # trial.set_user_attr("Resampled Energies", [float(e) for e in out_data["resampled_target_energy"]])
+    # trial.set_user_attr("Resampled Energy Variances", [float(ev) for ev in out_data["resampled_target_energy_var"]])
 
     return obj_value
 
