@@ -135,13 +135,63 @@ def build_parametric_gradient_estimator(
         method = "auto"
     if return_aux is None:
         return_aux = False
+    if method not in VALID_TDVP_METHODS:
+        raise ValueError(f"Unknown TDVP method: {method}")
 
     logpsi = deep_boltzmann_quantum_state.logpsi
     is_holomorphic = deep_boltzmann_quantum_state.is_holomorphic
-    dtype = deep_boltzmann_quantum_state.dtype
+    dtype = deep_boltzmann_quantum_state.params.dtype
 
     _num_samples = deep_boltzmann_quantum_state.num_samples
     _num_params = deep_boltzmann_quantum_state.params.size
+
+    if deep_boltzmann_quantum_state.visible_interactions:
+        # Real coordinates can describe a complex wavefunction. A holomorphic
+        # gradient or a cast of O to real would lose all phase derivatives.
+        complex_output = deep_boltzmann_quantum_state.complex_output
+        grad_real = jax.grad(lambda p, x: jnp.real(logpsi(p, x)), argnums=0)
+        if complex_output:
+            grad_imag = jax.grad(lambda p, x: jnp.imag(logpsi(p, x)), argnums=0)
+
+            def grad_logpsi(p, x):
+                return grad_real(p, x) + 1j * grad_imag(p, x)
+        else:
+            grad_logpsi = grad_real
+
+        vmapd_grad = jax.vmap(grad_logpsi, in_axes=(None, 0))
+        vmapd_energy = jax.vmap(local_hamiltonian, in_axes=(None, 0, None))
+        sample_rows = (2 if complex_output else 1) * _num_samples
+        real_method = ("minSR" if sample_rows <= _num_params else "SR") if method == "auto" else method
+
+        @jax.jit
+        def real_estimate_gradients(params, sample, couplings):
+            derivatives = vmapd_grad(params, sample)
+            derivatives -= jnp.mean(derivatives, axis=0, keepdims=True)
+            energies = vmapd_energy(params, sample, couplings)
+            avg_energy, energy_var = jnp.mean(energies), jnp.var(energies)
+            residual = prefactor * (energies - avg_energy)
+            # Re(O^dag O)/M and Re(O^dag prefactor*E)/M are a real least
+            # squares system after stacking real/imaginary sample rows.
+            if complex_output:
+                design = jnp.concatenate((derivatives.real, derivatives.imag), axis=0)
+                target = jnp.concatenate((residual.real, residual.imag), axis=0)
+            else:
+                design, target = derivatives.real, residual.real
+            normalization = jnp.sqrt(sample.shape[0])
+            design, target = design / normalization, target / normalization
+            if real_method == "minSR":
+                metric = design @ design.T
+                metric += diag_shift * jnp.eye(metric.shape[0], dtype=dtype)
+                gradients = design.T @ (jnp.linalg.pinv(metric, rtol=p_inv_rcond) @ target)
+            else:
+                metric = design.T @ design
+                metric += diag_shift * jnp.eye(metric.shape[0], dtype=dtype)
+                gradients = jnp.linalg.pinv(metric, rtol=p_inv_rcond) @ (design.T @ target)
+            if return_aux:
+                return gradients, avg_energy, energy_var
+            return gradients
+
+        return real_estimate_gradients
 
     vmapd_grad_logpsi = jax.vmap(jax.grad(logpsi, argnums=0, holomorphic=is_holomorphic), in_axes=(None, 0))
     vmapd_local_hamiltonian = jax.vmap(local_hamiltonian, in_axes=(None, 0, None))

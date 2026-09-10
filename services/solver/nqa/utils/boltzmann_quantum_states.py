@@ -23,7 +23,8 @@ class DeepBoltzmannQuantumState:
         dtype (jnp.dtype): JAX numpy data type to use.
         use_bias (bool): Whether to use bias terms in the spin network.
         num_samples_per_chain (int): Number of samples per chain.
-        is_holomorphic (bool): Indicates if the dtype is complex.
+        is_holomorphic (bool): Whether logpsi is holomorphic in its flattened parameters.
+        complex_output (bool): Whether amplitudes include trainable phases.
         num_units_list (List[int]): List of the number of units in each layer, including the input layer.
         num_units (int): Total number of units across all layers.
         dummy_units (List[jnp.ndarray]): Dummy units for initializing the network.
@@ -68,6 +69,8 @@ class DeepBoltzmannQuantumState:
         dtype: Optional[jnp.dtype] = None,
         use_bias: Optional[bool] = None,
         initial_params_gain: Optional[float] = None,
+        visible_interactions: bool = False,
+        visible_rank: Optional[int] = None,
     ):
         """
         Initialize the Deep Boltzmann quantum state.
@@ -83,6 +86,11 @@ class DeepBoltzmannQuantumState:
             dtype (Optional[jnp.dtype]): JAX numpy data type to use. Defaults to jnp.complex128.
             use_bias (Optional[bool]): Whether to use bias terms in the spin network. Defaults to True.
             initial_params_gain (Optional[float]): Scaling factor for initializing the parameters. Defaults to 1e-1.
+            visible_interactions (bool): Add x.T @ (J @ J.T + 1j*K) @ x on the
+                visible layer. All trainable coordinates are real in this mode;
+                complex dtype enables separate real/imaginary network parts and K.
+            visible_rank (Optional[int]): Number of Gaussian auxiliary fields
+                (columns of J). Defaults to num_spins when interactions are enabled.
         """
         if num_samples is None:
             num_samples = 2**10
@@ -98,6 +106,14 @@ class DeepBoltzmannQuantumState:
             use_bias = True
         if initial_params_gain is None:
             initial_params_gain = 1e-1
+
+        if not isinstance(visible_interactions, bool):
+            raise ValueError("visible_interactions must be a boolean.")
+        if visible_rank is not None:
+            if not visible_interactions:
+                raise ValueError("visible_rank requires visible_interactions=True.")
+            if isinstance(visible_rank, bool) or not isinstance(visible_rank, int) or visible_rank <= 0:
+                raise ValueError("visible_rank must be a positive integer.")
 
         if num_samples % num_chains != 0:
             num_samples_per_chain = num_samples // num_chains + (1 * (num_samples % num_chains != 0))
@@ -115,9 +131,12 @@ class DeepBoltzmannQuantumState:
         self.dtype = dtype
         self.use_bias = use_bias
         self.initial_params_gain = initial_params_gain
+        self.visible_interactions = visible_interactions
+        self.visible_rank = (num_spins if visible_rank is None else visible_rank) if visible_interactions else 0
+        self.complex_output = jnp.issubdtype(dtype, jnp.complexfloating)
 
         self.num_samples_per_chain = self.num_samples // self.num_chains
-        self.is_holomorphic = True if (dtype == jnp.complex64 or dtype == jnp.complex128) else False
+        self.is_holomorphic = bool(self.complex_output and not visible_interactions)
         self.num_units_list = [num_spins] + hidden_layers
         self.num_units = sum(self.num_units_list)
         self.dummy_units = [jnp.ones((n,)) for n in self.num_units_list]
@@ -155,12 +174,48 @@ class DeepBoltzmannQuantumState:
             for i in range(len(self.num_units_list) - 1)
         ]
 
-        if self.use_bias:
-            params, unravel_params = jax.flatten_util.ravel_pytree((biases, weights))
-        else:
-            params, unravel_params = jax.flatten_util.ravel_pytree(weights)
+        network = (biases, weights) if self.use_bias else weights
+        if self.visible_interactions:
+            real_dtype = jnp.real(jnp.zeros((), dtype=self.dtype)).dtype
+            # J=0 is a stationary point of J J.T. Use a nonzero initialization
+            # so SR can learn amplitude interactions from the first update.
+            factor_key = jax.random.fold_in(prngkey, len(self.num_units_list))
+            tree = {
+                "real": jax.tree.map(jnp.real, network),
+                "J": self.initial_params_gain * jax.random.normal(
+                    factor_key, (self.num_spins, self.visible_rank), dtype=real_dtype
+                ) / jnp.sqrt(self.num_spins + self.visible_rank),
+            }
+            if self.complex_output:
+                tree["imag"] = jax.tree.map(jnp.imag, network)
+                tree["K"] = jnp.zeros((self.num_spins, self.num_spins), dtype=real_dtype)
+            network = tree
+        params, unravel_params = jax.flatten_util.ravel_pytree(network)
 
         return params, unravel_params
+
+    def unpack_params(self, params):
+        """Return (biases, weights, J, K), with absent visible terms set to None.
+
+        The legacy parameter tree is unchanged. With visible interactions, the
+        tree has real leaves: J, real, and (for complex output) K and imag.
+        The real/imag network trees retain the legacy bias/weight structure.
+        """
+        network = self.unravel_params(params)
+        factor = phase = None
+        if self.visible_interactions:
+            factor = network["J"]
+            if self.complex_output:
+                phase = network["K"]
+                network = jax.tree.map(lambda r, i: r + 1j * i, network["real"], network["imag"])
+            else:
+                network = network["real"]
+        if self.use_bias:
+            biases, weights = network
+        else:
+            weights = network
+            biases = [jnp.zeros((n,), dtype=self.dtype) for n in self.num_units_list]
+        return biases, weights, factor, phase
 
     @partial(jax.jit, static_argnums=(0,))
     def logpsi(
@@ -178,18 +233,20 @@ class DeepBoltzmannQuantumState:
         Returns:
             jnp.ndarray: Logarithm of the wavefunction amplitude.
         """
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
+        biases, weights, factor, phase = self.unpack_params(params)
 
         units = self.unravel_config(config)
         bias_terms = jnp.array([unit.T @ bias for unit, bias in zip(units, biases)])
         interaction_terms = jnp.array(
             [unit_a.T @ weight @ unit_b for unit_a, weight, unit_b in zip(units[:-1], weights, units[1:])]
         )
-        return jnp.sum(bias_terms) + jnp.sum(interaction_terms)
+        value = jnp.sum(bias_terms) + jnp.sum(interaction_terms)
+        if factor is not None:
+            projected = units[0] @ factor
+            value += projected @ projected
+        if phase is not None:
+            value += 1j * (units[0] @ phase @ units[0])
+        return value
 
     # This can be computed more efficiently
     @partial(jax.jit, static_argnums=(0,))
@@ -228,24 +285,22 @@ class DeepBoltzmannQuantumState:
         Returns:
             jnp.ndarray: Local energy for sigma_x operators.
         """
-        # More efficient way to compute the local energy for the sum of the sigma_x operators on the visible spins
-        # The computation is much simpler than the general case as we do not need to compute the deeper hidden_layers
-        # as only the state of the first hidden hidden_layers
-        # determines the ratio and as the visible units are conditionally independent
-        # when given the first layer units
-        # We can compute in parallel all the ratios
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
-
+        biases, weights, factor, phase = self.unpack_params(params)
         units = self.unravel_config(config)
-
-        visible_biases = biases[0]
-        effective_visible_biases = visible_biases + (weights[0] @ units[1])
+        effective_visible_biases = biases[0]
+        if weights:
+            effective_visible_biases = effective_visible_biases + weights[0] @ units[1]
         visible_spins = units[0]
-        return jnp.exp(-2 * visible_spins * effective_visible_biases)
+        log_ratios = -2 * visible_spins * effective_visible_biases
+        if factor is not None:
+            # The diagonal of J J.T contributes only a constant since x_i^2=1.
+            log_ratios += -4 * visible_spins * (factor @ (factor.T @ visible_spins))
+            log_ratios += 4 * jnp.sum(factor * factor, axis=1)
+        if phase is not None:
+            # Valid for nonsymmetric K too; its antisymmetric part cancels.
+            log_ratios += -2j * visible_spins * ((phase + phase.T) @ visible_spins)
+            log_ratios += 4j * jnp.diag(phase)
+        return jnp.exp(log_ratios)
 
     @partial(jax.jit, static_argnums=(0,))
     def local_sigma_ys(
@@ -263,18 +318,8 @@ class DeepBoltzmannQuantumState:
         Returns:
             jnp.ndarray: Local energy for sigma_y operators.
         """
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
-
-        units = self.unravel_config(config)
-
-        visible_biases = biases[0]
-        effective_visible_biases = visible_biases + (weights[0] @ units[1])
-        visible_spins = units[0]
-        return -1.0j * visible_spins * jnp.exp(-2 * visible_spins * effective_visible_biases)
+        visible_spins = config[:self.num_spins]
+        return -1.0j * visible_spins * self.local_sigma_xs(params, config)
 
     @partial(jax.jit, static_argnums=(0,))
     def local_energy_sigma_x(
@@ -318,6 +363,8 @@ class DeepBoltzmannQuantumState:
         biases: List[jnp.ndarray],
         weights: List[jnp.ndarray],
         odd_units: List[jnp.ndarray],
+        visible_factor: Optional[jnp.ndarray] = None,
+        auxiliary_fields: Optional[jnp.ndarray] = None,
     ) -> List[jnp.ndarray]:
         """
         Compute the conditional probabilities of even units given odd units.
@@ -334,6 +381,14 @@ class DeepBoltzmannQuantumState:
         even_weights, odd_weights = weights[::2], weights[1::2]
 
         left_interactions = [jnp.zeros(shape=biases[0].shape)] + [u.T @ W for u, W in zip(odd_units, odd_weights)]
+        if self.visible_interactions and visible_factor is None:
+            raise ValueError("Visible interactions require visible_factor in Gibbs conditionals.")
+        if visible_factor is not None:
+            if auxiliary_fields is None:
+                raise ValueError("Visible Gibbs probabilities require auxiliary_fields.")
+            # The existing preactivation multiplies by four; J z enters the
+            # augmented log density once, giving a logit contribution 2 J z.
+            left_interactions[0] = 0.5 * (visible_factor @ auxiliary_fields)
         right_interactions = [W @ u for u, W in zip(odd_units, even_weights)]
 
         if len(self.num_units_list) % 2 == 1:
@@ -400,12 +455,19 @@ class DeepBoltzmannQuantumState:
         ]
 
     @partial(jax.jit, static_argnums=(0,))
+    def sample_auxiliary_fields(self, prngkey, visible_factor, visible_spins):
+        """Draw z | x ~ N(4 J.T x, 4 I); z is a sampling variable only."""
+        mean = 4 * (visible_factor.T @ visible_spins)
+        return mean + 2 * jax.random.normal(prngkey, mean.shape, dtype=visible_factor.dtype)
+
+    @partial(jax.jit, static_argnums=(0,))
     def gibbs_step(
         self,
         prngkey: jnp.ndarray,
         biases: List[jnp.ndarray],
         weights: List[jnp.ndarray],
         units: List[jnp.ndarray],
+        visible_factor: Optional[jnp.ndarray] = None,
     ) -> Tuple[jnp.ndarray, List[jnp.ndarray]]:
         """
         Perform a single Gibbs sampling step.
@@ -420,13 +482,19 @@ class DeepBoltzmannQuantumState:
             Tuple[jnp.ndarray, List[jnp.ndarray]]: Updated PRNGKey and new state of the units.
         """
         new_units = units[::]
+        auxiliary_fields = None
+        if visible_factor is not None:
+            prngkey, auxiliary_key = jax.random.split(prngkey)
+            auxiliary_fields = self.sample_auxiliary_fields(auxiliary_key, visible_factor, units[0])
         prngkey, *tempkeys = jax.random.split(prngkey, len(self.num_units_list) + 1)
         p_odds = self.prob_odds_given_evens(biases, weights, new_units[::2])
         new_odds = [2 * jax.random.bernoulli(tempkeys[i], p=p) - 1 for i, p in enumerate(p_odds)]
         new_units[1::2] = new_odds
 
         prngkey, *tempkeys = jax.random.split(prngkey, len(self.num_units_list) + 1)
-        p_evens = self.prob_evens_given_odds(biases, weights, new_units[1::2])
+        p_evens = self.prob_evens_given_odds(
+            biases, weights, new_units[1::2], visible_factor, auxiliary_fields
+        )
         new_evens = [2 * jax.random.bernoulli(tempkeys[i], p=p) - 1 for i, p in enumerate(p_evens)]
         new_units[::2] = new_evens
         return prngkey, new_units
@@ -437,6 +505,7 @@ class DeepBoltzmannQuantumState:
         biases: List[jnp.ndarray],
         weights: List[jnp.ndarray],
         units: List[jnp.ndarray],
+        visible_factor: Optional[jnp.ndarray] = None,
     ) -> Tuple[jnp.ndarray, List[jnp.ndarray]]:
         """
         Perform thermalization steps for the Gibbs chain.
@@ -453,7 +522,7 @@ class DeepBoltzmannQuantumState:
         prngkey, units = jax.lax.fori_loop(
             0,
             self.num_thermalization_steps,
-            lambda i, args: self.gibbs_step(args[0], biases, weights, args[1]),
+            lambda i, args: self.gibbs_step(args[0], biases, weights, args[1], visible_factor),
             (prngkey, units),
         )
         return prngkey, units
@@ -464,6 +533,7 @@ class DeepBoltzmannQuantumState:
         biases: List[jnp.ndarray],
         weights: List[jnp.ndarray],
         units: List[jnp.ndarray],
+        visible_factor: Optional[jnp.ndarray] = None,
     ) -> Tuple[jnp.ndarray, List[jnp.ndarray]]:
         """
         Perform sweep steps for the Gibbs chain.
@@ -480,7 +550,7 @@ class DeepBoltzmannQuantumState:
         prngkey, units = jax.lax.fori_loop(
             0,
             self.num_sweep_steps,
-            lambda i, args: self.gibbs_step(args[0], biases, weights, args[1]),
+            lambda i, args: self.gibbs_step(args[0], biases, weights, args[1], visible_factor),
             (prngkey, units),
         )
         return prngkey, units
@@ -490,6 +560,7 @@ class DeepBoltzmannQuantumState:
         prngkey: jnp.ndarray,
         biases: List[jnp.ndarray],
         weights: List[jnp.ndarray],
+        visible_factor: Optional[jnp.ndarray] = None,
     ) -> jnp.ndarray:
         """
         Run a full Gibbs sampling chain.
@@ -503,7 +574,7 @@ class DeepBoltzmannQuantumState:
             jnp.ndarray: Generated samples from the Gibbs chain.
         """
         prngkey, units = self.base_sampler(prngkey)
-        prngkey, starting_units = self.thermalization_fn(prngkey, biases, weights, units)
+        prngkey, starting_units = self.thermalization_fn(prngkey, biases, weights, units, visible_factor)
         chain = [
             jnp.zeros(shape=(self.num_samples_per_chain, self.num_units_list[n]))
             .at[0]
@@ -515,7 +586,7 @@ class DeepBoltzmannQuantumState:
         def fori_func(i, args):
             prngkey, chain = args
             last_units = [_c[i] for _c in chain]
-            prngkey, next_units = self.sweep_fn(prngkey, biases, weights, last_units)
+            prngkey, next_units = self.sweep_fn(prngkey, biases, weights, last_units, visible_factor)
             chain = [chain[j].at[i + 1].set(next_units[j]) for j in range(len(chain))]
             return prngkey, chain
 
@@ -529,6 +600,7 @@ class DeepBoltzmannQuantumState:
         biases: List[jnp.ndarray],
         weights: List[jnp.ndarray],
         starting_point: jnp.ndarray,
+        visible_factor: Optional[jnp.ndarray] = None,
     ) -> jnp.ndarray:
         """
         Run a Gibbs chain starting from a given configuration.
@@ -543,7 +615,7 @@ class DeepBoltzmannQuantumState:
             jnp.ndarray: Generated samples from the Gibbs chain.
         """
         starting_units = self.unravel_config(starting_point)
-        prngkey, starting_units = self.sweep_fn(prngkey, biases, weights, starting_units)
+        prngkey, starting_units = self.sweep_fn(prngkey, biases, weights, starting_units, visible_factor)
         chain = [
             jnp.zeros(shape=(self.num_samples_per_chain, self.num_units_list[n]))
             .at[0]
@@ -555,7 +627,7 @@ class DeepBoltzmannQuantumState:
         def fori_func(i, args):
             prngkey, chain = args
             last_units = [_c[i] for _c in chain]
-            prngkey, next_units = self.sweep_fn(prngkey, biases, weights, last_units)
+            prngkey, next_units = self.sweep_fn(prngkey, biases, weights, last_units, visible_factor)
             chain = [chain[j].at[i + 1].set(next_units[j]) for j in range(len(chain))]
             return prngkey, chain
 
@@ -568,6 +640,7 @@ class DeepBoltzmannQuantumState:
         prngkeys: jnp.ndarray,
         biases: List[jnp.ndarray],
         weights: List[jnp.ndarray],
+        visible_factor: Optional[jnp.ndarray] = None,
     ) -> jnp.ndarray:
         """
         Run multiple Gibbs chains in parallel.
@@ -580,7 +653,9 @@ class DeepBoltzmannQuantumState:
         Returns:
             jnp.ndarray: Generated samples from the parallel Gibbs chains.
         """
-        return jax.vmap(self.gibbs_chain, in_axes=(0, None, None))(prngkeys, biases, weights)
+        return jax.vmap(self.gibbs_chain, in_axes=(0, None, None, None))(
+            prngkeys, biases, weights, visible_factor
+        )
 
     def vmapd_gibbs_chain_from_starting_points(
         self,
@@ -588,6 +663,7 @@ class DeepBoltzmannQuantumState:
         biases: List[jnp.ndarray],
         weights: List[jnp.ndarray],
         starting_points: jnp.ndarray,
+        visible_factor: Optional[jnp.ndarray] = None,
     ) -> jnp.ndarray:
         """
         Run multiple Gibbs chains in parallel from given starting points.
@@ -601,8 +677,8 @@ class DeepBoltzmannQuantumState:
         Returns:
             jnp.ndarray: Generated samples from the parallel Gibbs chains.
         """
-        return jax.vmap(self.gibbs_chain_from_starting_point, in_axes=(0, None, None, 0))(
-            prngkeys, biases, weights, starting_points
+        return jax.vmap(self.gibbs_chain_from_starting_point, in_axes=(0, None, None, 0, None))(
+            prngkeys, biases, weights, starting_points, visible_factor
         )
 
     def generate_samples(
@@ -619,14 +695,14 @@ class DeepBoltzmannQuantumState:
 
         Returns:
             Tuple[jnp.ndarray, jnp.ndarray]: Generated samples and their endpoints.
+
+        Gaussian fields are redrawn before each visible update and then
+        discarded. Samples and endpoints contain only visible/hidden spins;
+        logpsi and physical estimators must use the marginalized amplitude.
         """
         tempkeys = jax.random.split(prngkey, self.num_chains)
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
-        chains = self.vmapd_gibbs_chain(tempkeys, biases, weights)
+        biases, weights, visible_factor, _ = self.unpack_params(params)
+        chains = self.vmapd_gibbs_chain(tempkeys, biases, weights, visible_factor)
         samples = jnp.reshape(chains, (-1, self.num_units))
         endpoints = chains[:, -1]
         return samples, endpoints
@@ -649,12 +725,10 @@ class DeepBoltzmannQuantumState:
             Tuple[jnp.ndarray, jnp.ndarray]: Updated samples and their endpoints.
         """
         tempkeys = jax.random.split(prngkey, self.num_chains)
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
-        chains = self.vmapd_gibbs_chain_from_starting_points(tempkeys, biases, weights, starting_points)
+        biases, weights, visible_factor, _ = self.unpack_params(params)
+        chains = self.vmapd_gibbs_chain_from_starting_points(
+            tempkeys, biases, weights, starting_points, visible_factor
+        )
         samples = jnp.reshape(chains, (-1, self.num_units))
         endpoints = chains[:, -1]
         return samples, endpoints
@@ -677,11 +751,7 @@ class DeepBoltzmannQuantumState:
         """
         Runs a Gibbs chain with no sweeps or thermalization
         """
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
+        biases, weights, visible_factor, _ = self.unpack_params(params)
         prngkey, starting_units = self.base_sampler(prngkey)
         chain = [
             jnp.zeros(shape=(self.num_samples_per_chain, self.num_units_list[n]))
@@ -694,7 +764,7 @@ class DeepBoltzmannQuantumState:
         def fori_func(i, args):
             prngkey, chain = args
             last_units = [_c[i] for _c in chain]
-            prngkey, next_units = self.gibbs_step(prngkey, biases, weights, last_units)
+            prngkey, next_units = self.gibbs_step(prngkey, biases, weights, last_units, visible_factor)
             chain = [chain[j].at[i + 1].set(next_units[j]) for j in range(len(chain))]
             return prngkey, chain
 
