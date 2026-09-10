@@ -216,14 +216,18 @@ PYTHONPATH=services/solver/nqa JAX_ENABLE_X64=True \
     python -m pytest -q services/solver/nqa/tests/test_visible_interactions.py
 ```
 
-The 26 new cases cover amplitudes, all single-spin flips and multiple-spin
+The 28 new cases cover amplitudes, all single-spin flips and multiple-spin
 ratios, exact density-matrix energies, Gaussian conditionals and Hermite
 quadrature, sampled distributions and persistent endpoints, phase-independent
 sampling, finite-difference gradients, SR/minSR agreement, real-valued updates
-with a Y term and two replicas, legacy reduction, and invalid options.
+with a Y term and two replicas, legacy reduction, and invalid options. Two
+analytic entanglement checks construct the exact ground state of
+`Z1 Z2 + g (X1 + X2)` at `g=0.1` and `g=1.5`, verifying that the implemented
+visible interactions lower the energy below the best possible product state.
 
 Validated on CPU with JAX/JAXlib 0.11.1, Optax 0.2.8, NumPy 2.3.5, SciPy 1.17.0,
-and pytest 8.4.2, with JAX 64-bit arithmetic enabled. The full suite reports
+and pytest 8.4.2, with JAX 64-bit arithmetic enabled. Before the two additional
+entanglement checks, the full suite reported
 **66 passed, 3 failed**. The same three failures occur on the unchanged base
 revision: `test_variational_annealer_basic_run_no_catalyst`,
 `test_variational_annealer_with_catalyst_and_inst_energy`, and
@@ -237,3 +241,50 @@ visible-interaction option enabled.
 
 The mathematical checks validate the implementation on small systems. No GPU
 performance or large-system mixing claim follows from these tests.
+
+## QSK optimization and transverse-field phase
+
+For the repository convention `H(g) = x.T @ J_file @ x + g sum(X)`, uniform
+positive `g` is unitarily equivalent to negative `g` through `G = product(Z)`.
+An amplitude with visible bias `i*pi/2` at every site carries the corresponding
+configuration phase, proportional to `product(x)`. The ground state of the
+negative-field Hamiltonian can be chosen positive. This gives a useful
+initialization for direct SR on the positive-field target; it does not change
+the target Hamiltonian or require fixing the phase parameters during training.
+
+The usual catalyzed path `s H(g) - (1-s) sum(X) - s(1-s) sum(Y)` has an X
+coefficient `s*g-(1-s)`. At `g=1.5`, this crosses zero at `s=0.4`, where the
+remaining Y field has magnitude `0.24`. Relative to the Ising coefficient
+`s=0.4`, the effective transverse field is only `0.6`. This avoidable low-field
+part of the path can make a fixed-budget benchmark a poor measure of the
+extension's expressivity. Exact final energy evaluation does not establish
+that the optimization converged.
+
+An N=16 check on all ten repository instances mapped independently optimized
+real Jastrow states into the native `J J.T` parameterization by adding a
+diagonal shift before factorization. Their native energies agreed with the
+independent evaluator within `1.1e-12`, with mean relative error `0.115%` at
+`g=1.5`. The hidden-layer couplings were zero for this representability check;
+these are feasible states, not a proof of the globally best Jastrow energy.
+This is a useful control before attributing poor training results to the
+ansatz or its Gaussian sampler.
+
+A matched direct-SR rerun at `N=16, g=1.5` used the same ten instances, two
+seeds, approximately 950 real trainable coordinates per model, 128 samples
+per update, four sweeps, learning rate `0.05`, and normalized SR shift `0.01`.
+It initialized the known transverse-field phase, started network weights
+real, and spent all 1,510 updates on the unchanged positive-field target.
+All final energies were evaluated exactly. Mean relative errors (SEM across
+ten instance averages) were:
+
+| Ansatz | Relative energy error (%) |
+|---|---:|
+| Old DBQS, hidden [8,36] | 4.7577 ± 0.5149 |
+| Visible-interaction DBQS, hidden [8,8], rank 16 | 0.1608 ± 0.0425 |
+| cRBM, 27 hidden units | 0.0132 ± 0.0009 |
+
+This is a fixed-budget optimization comparison, not a global optimum or
+equal-wall-time result. The original catalyzed annealing protocol gave
+`4.9540%` for the visible-interaction DBQS under the same total update budget.
+Changing the protocol recovers the expected advantage without altering the
+ansatz, Gaussian conditionals, or physical spin-flip formulas.

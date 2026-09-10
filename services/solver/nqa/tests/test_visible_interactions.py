@@ -252,6 +252,40 @@ def test_exact_energy_gradient_uses_marginalized_amplitude():
     assert np.linalg.norm(analytic) > 0.1
 
 
+@pytest.mark.parametrize("g", [0.1, 1.5])
+def test_visible_jastrow_reaches_entangled_ground_state_below_product_bound(g):
+    """H=Z1 Z2+g(X1+X2) has an exactly representable Jastrow ground state.
+
+    This checks the expressivity gain using an analytic separable energy bound,
+    independently of any optimizer or stochastic energy estimate.
+    """
+    model = DeepBoltzmannQuantumState(
+        2, [1], jax.random.PRNGKey(21), dtype=jnp.complex128,
+        visible_interactions=True, visible_rank=2,
+        num_samples=16, num_chains=4,
+    )
+    tree = jax.tree.map(jnp.zeros_like, model.unravel_params(model.params))
+    ground_energy = -np.sqrt(1 + 4*g*g)
+    pair_coefficient = 0.5*np.log(2*g/(1-ground_energy))
+    factor = np.sqrt(-pair_coefficient/2)
+    tree["J"] = jnp.asarray([[factor, 0.], [-factor, 0.]])
+    tree["imag"][0][0] = jnp.full((2,), np.pi/2)
+    params = jax.flatten_util.ravel_pytree(tree)[0]
+    configs = jnp.asarray(spin_configs(model.num_units))
+    amplitudes = np.asarray(jax.vmap(model.logpsi, in_axes=(None, 0))(params, configs))
+    amplitudes = np.exp(amplitudes).reshape(4, 2)
+    X, Z = np.array([[0., 1.], [1., 0.]]), np.diag([1., -1.])
+    H = np.kron(Z, Z) + g*(np.kron(X, np.eye(2)) + np.kron(np.eye(2), X))
+    np.testing.assert_allclose(H @ amplitudes, ground_energy*amplitudes, atol=1e-12)
+    ratios = np.asarray(jax.vmap(model.local_sigma_xs, in_axes=(None, 0))(params, configs))
+    local_values = np.asarray(configs[:, 0]*configs[:, 1]) + g*ratios.sum(axis=1)
+    np.testing.assert_allclose(local_values, ground_energy, atol=1e-12)
+    # The old DBQS is a mixture of product states. Its best possible energy
+    # here is the analytic minimum over all pure product states.
+    product_bound = -2*g if g >= 1 else -1-g*g
+    assert ground_energy < product_bound - 1e-3
+
+
 @pytest.mark.parametrize("use_bias", [True, False])
 def test_zero_visible_terms_recover_legacy(use_bias):
     legacy = DeepBoltzmannQuantumState(3, [1], jax.random.PRNGKey(12), use_bias=use_bias)
