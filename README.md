@@ -140,6 +140,12 @@ python services/solver/nqa/master.py --J_matrix_path <path/to/J.npy> [options]
 |---|---|---|---|
 | `--dbqs_num_hidden_layers` | int | `2` | Number of hidden layers |
 | `--dbqs_unit_density_per_layer_min/max` | float | `0.5` / `2.0` | Hidden units per spin (search range) |
+| `--dbqs_visible_rank` | int | `0` | Enable visible interactions with this many Gaussian auxiliary fields; `0` disables them. Use `N` for a square visible factor. |
+
+Visible interactions add `x.T @ (J @ J.T + 1j*K) @ x` to the DBQS log amplitude.
+The extension uses positive Gaussian/binary block Gibbs sampling and real-coordinate
+SR/minSR, including trainable phases. For the mathematical conventions, Python API,
+and validation instructions, see [visible interactions](docs/dbqs_visible_interactions.md).
 
 #### MCMC sampling
 

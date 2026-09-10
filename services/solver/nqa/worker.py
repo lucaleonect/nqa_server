@@ -183,13 +183,22 @@ parser.add_argument(
     "--dbqs_param_dtype",
     type=str,
     default="complex",
-    help="Data type for the parameters of the Deep Boltzmann Quantum State. Accepted values are 'float' and 'complex'. Default is 'complex'.",
+    help="Amplitude type: 'float' or 'complex' (default). With visible interactions, "
+         "complex amplitudes use separate real trainable coordinates for amplitude and phase.",
 )
 parser.add_argument(
     "--dbqs_use_bias",
     action=argparse.BooleanOptionalAction,
     default=True,
     help="Whether to use bias terms in the Deep Boltzmann Quantum State. Default is True.",
+)
+
+parser.add_argument(
+    "--dbqs_visible_rank",
+    type=int,
+    default=0,
+    help="Enable visible interactions with this many Gaussian fields; 0 disables them. "
+         "Use the number of visible spins for the square J in the sampling notes.",
 )
 
 # Markov chain Monte Carlo sampler settings
@@ -236,6 +245,8 @@ parser.add_argument(
     help="Disable annealing and runs vanilla SR.",
 )
 args = parser.parse_args()
+if args.dbqs_visible_rank < 0:
+    parser.error("--dbqs_visible_rank must be nonnegative")
 # endregion
 
 # region: imports and environment variables
@@ -345,6 +356,8 @@ def main():
         num_chains=args.mcmc_num_chains,
         dtype=dtype,
         use_bias=args.dbqs_use_bias,
+        visible_interactions=args.dbqs_visible_rank > 0,
+        visible_rank=args.dbqs_visible_rank or None,
     )
     # endregion
 
