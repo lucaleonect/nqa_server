@@ -181,8 +181,8 @@ class DeepBoltzmannQuantumState:
             weights = self.unravel_params(params)
             biases = [jnp.zeros((numUnits,), dtype=jnp.float64) for numUnits in self.num_units_list]
 
-        weights = weights[0] + 1.0j * weights[1]
-        biases = biases[0] + 1.0j * biases[1]
+        weights = [W[0] + 1.0j * W[1] for W in weights]
+        biases = [b[0] + 1.0j * b[1] for b in biases]
         return weights, biases
 
     @partial(jax.jit, static_argnums=(0,))
@@ -254,7 +254,7 @@ class DeepBoltzmannQuantumState:
         # when given the first layer units
         # We can compute in parallel all the ratios
         weights, biases = self.unpack_params(params)
-        
+
         units = self.unravel_config(config)
 
         visible_biases = biases[0]
@@ -633,7 +633,7 @@ class DeepBoltzmannQuantumState:
         """
         tempkeys = jax.random.split(prngkey, self.num_chains)
         weights, biases = self.unpack_params(params)
-            
+
         chains = self.vmapd_gibbs_chain(tempkeys, biases, weights)
         samples = jnp.reshape(chains, (-1, self.num_units))
         endpoints = chains[:, -1]
