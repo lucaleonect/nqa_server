@@ -67,7 +67,6 @@ default_args = {
     "J_matrix_path": args.J_matrix_path,
     "vqa_num_warmup_steps": 10,
     "vqa_num_finetuning_steps": 100,
-    "dbqs_param_dtype": "complex",
     "mcmc_num_thermalization_steps": 2**7,
     "energy_shift": args.energy_shift,
     "vqa_num_replicas": args.vqa_num_replicas,

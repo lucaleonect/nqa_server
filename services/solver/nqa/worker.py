@@ -180,12 +180,6 @@ parser.add_argument(
     help="Number of units density per layer in the Deep Boltzmann Quantum State. Default is 1, which means one unit per visible spin.",
 )
 parser.add_argument(
-    "--dbqs_param_dtype",
-    type=str,
-    default="complex",
-    help="Data type for the parameters of the Deep Boltzmann Quantum State. Accepted values are 'float' and 'complex'. Default is 'complex'.",
-)
-parser.add_argument(
     "--dbqs_use_bias",
     action=argparse.BooleanOptionalAction,
     default=True,
@@ -327,13 +321,6 @@ def main():
     dbqs_units_per_layer = int(num_spins * args.dbqs_unit_density_per_layer)
     dbqs_layers = [dbqs_units_per_layer] * args.dbqs_num_hidden_layers
 
-    if args.dbqs_param_dtype == "float":
-        dtype = jnp.float64
-    elif args.dbqs_param_dtype == "complex":
-        dtype = jnp.complex128
-    else:
-        raise ValueError(f"Unknown data type: {args.dbqs_param_dtype}")
-
     prngkey, tempkey = jax.random.split(prngkey)
     vqs = DeepBoltzmannQuantumState(
         num_spins=num_spins,
@@ -343,7 +330,6 @@ def main():
         num_thermalization_steps=args.mcmc_num_thermalization_steps,
         num_sweep_steps=args.mcmc_num_sweep_steps,
         num_chains=args.mcmc_num_chains,
-        dtype=dtype,
         use_bias=args.dbqs_use_bias,
     )
     # endregion
@@ -439,7 +425,6 @@ def main():
         #     num_thermalization_steps=2**16,
         #     num_sweep_steps=2**16,
         #     num_chains=2**16,
-        #     dtype=dtype,
         #     use_bias=args.dbqs_use_bias,
         # )
         
