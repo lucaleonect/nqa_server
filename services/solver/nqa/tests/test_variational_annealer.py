@@ -61,14 +61,12 @@ def _build_hamiltonians(dbqs, key=None):
     return local_target, local_annealing, J, h, g
 
 
-def _build_estimator(dbqs, local_param_h, method="SR"):
+def _build_estimator(dbqs, local_param_h):
     return build_parametric_gradient_estimator(
         dbqs,
         local_param_h,
-        prefactor=1.0,
         p_inv_rcond=1e-12,
         diag_shift=1e-3,
-        method=method,
         return_aux=True,
     )
 
@@ -89,7 +87,7 @@ def test_variational_annealer_basic_run_no_catalyst():
     local_target, local_annealing, *_ = _build_hamiltonians(dbqs, _mk(10))
     local_param_h = build_local_parametric_hamiltonian(local_target, local_annealing)
 
-    est = _build_estimator(dbqs, local_param_h, method="SR")
+    est = _build_estimator(dbqs, local_param_h)
     schedule = _simple_schedule(len_steps=8, with_catalyst=False)
 
     va = VariationalAnnealer(
@@ -137,7 +135,7 @@ def test_variational_annealer_with_catalyst_and_inst_energy():
     # simple catalyst: reuse annealing as catalyst to test 3-term path
     local_catalyst = local_annealing
     local_param_h = build_local_parametric_hamiltonian(local_target, local_annealing, local_catalyst)
-    est = _build_estimator(dbqs, local_param_h, method="minSR")
+    est = _build_estimator(dbqs, local_param_h)
     schedule = _simple_schedule(len_steps=7, with_catalyst=True)
 
     va = VariationalAnnealer(
@@ -171,7 +169,7 @@ def test_variational_annealer_early_stop_runtime_cap():
     dbqs = _setup_dbqs_n4(num_samples=64, chains=8)
     local_target, local_annealing, *_ = _build_hamiltonians(dbqs, _mk(14))
     local_param_h = build_local_parametric_hamiltonian(local_target, local_annealing)
-    est = _build_estimator(dbqs, local_param_h, method="SR")
+    est = _build_estimator(dbqs, local_param_h)
 
     # long schedule, tiny time cap to trigger early stop path
     schedule = _simple_schedule(len_steps=60, with_catalyst=False)
@@ -198,7 +196,7 @@ def test_variational_annealer_invalid_inputs_raise():
     dbqs = _setup_dbqs_n4()
     local_target, local_annealing, *_ = _build_hamiltonians(dbqs, _mk(16))
     local_param_h = build_local_parametric_hamiltonian(local_target, local_annealing)
-    est = _build_estimator(dbqs, local_param_h, method="SR")
+    est = _build_estimator(dbqs, local_param_h)
 
     with pytest.raises(Exception):
         VariationalAnnealer(
@@ -266,7 +264,7 @@ def test_variational_annealer_logs_include_params_when_enabled():
     dbqs = _setup_dbqs_n4(num_samples=64, chains=8)
     local_target, local_annealing, *_ = _build_hamiltonians(dbqs, _mk(17))
     local_param_h = build_local_parametric_hamiltonian(local_target, local_annealing)
-    est = _build_estimator(dbqs, local_param_h, method="minSR")
+    est = _build_estimator(dbqs, local_param_h)
 
     schedule = _simple_schedule(5, False)
     va = VariationalAnnealer(
