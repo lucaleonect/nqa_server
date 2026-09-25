@@ -9,8 +9,8 @@ class DeepBoltzmannQuantumState:
     """
     Deep Boltzmann quantum state class.
 
-    This class implements a quantum state representation using a deep Boltzmann machine. 
-    It provides methods for block Gibbs sampling to generate samples from the quantum state. 
+    This class implements a quantum state representation using a deep Boltzmann machine.
+    It provides methods for block Gibbs sampling to generate samples from the quantum state.
 
     Attributes:
         num_spins (int): Number of spins in the system.
@@ -20,10 +20,8 @@ class DeepBoltzmannQuantumState:
         num_thermalization_steps (int): Number of thermalization steps in the Gibbs chain.
         num_sweep_steps (int): Number of sweep steps in the Gibbs chain.
         num_chains (int): Number of chains to run in parallel.
-        dtype (jnp.dtype): JAX numpy data type to use.
         use_bias (bool): Whether to use bias terms in the spin network.
         num_samples_per_chain (int): Number of samples per chain.
-        is_holomorphic (bool): Indicates if the dtype is complex.
         num_units_list (List[int]): List of the number of units in each layer, including the input layer.
         num_units (int): Total number of units across all layers.
         dummy_units (List[jnp.ndarray]): Dummy units for initializing the network.
@@ -31,7 +29,7 @@ class DeepBoltzmannQuantumState:
         unravel_config (Callable): Function to unflatten configurations.
         params (jnp.ndarray): Flattened parameters of the quantum state.
         unravel_params (Callable): Function to unflatten parameters.
-    
+
     Methods:
         __init__: Initializes the quantum state with the given parameters.
         init_params: Initializes the parameters of the quantum state.
@@ -65,7 +63,6 @@ class DeepBoltzmannQuantumState:
         num_thermalization_steps: Optional[int] = None,
         num_sweep_steps: Optional[int] = None,
         num_chains: Optional[int] = None,
-        dtype: Optional[jnp.dtype] = None,
         use_bias: Optional[bool] = None,
         initial_params_gain: Optional[float] = None,
     ):
@@ -80,9 +77,14 @@ class DeepBoltzmannQuantumState:
             num_thermalization_steps (Optional[int]): Number of thermalization steps in the Gibbs chain. Defaults to 2**10.
             num_sweep_steps (Optional[int]): Number of sweep steps in the Gibbs chain. Defaults to 2**7.
             num_chains (Optional[int]): Number of chains to run in parallel. Defaults to 2**8.
-            dtype (Optional[jnp.dtype]): JAX numpy data type to use. Defaults to jnp.complex128.
             use_bias (Optional[bool]): Whether to use bias terms in the spin network. Defaults to True.
             initial_params_gain (Optional[float]): Scaling factor for initializing the parameters. Defaults to 1e-1.
+
+        Changes:
+            This Ansatz now uses real parameters, this enables us to use the Hubbard-Stratonovich transform to sample
+                after including visible to visible interactions in the Ansatz.
+                Parameters are arranged in a rank 3 tensor for interactions and rank 2 for biases, so that the full complex parameter
+                is given by W = W[0]+1.j*W[1]
         """
         if num_samples is None:
             num_samples = 2**10
@@ -92,8 +94,6 @@ class DeepBoltzmannQuantumState:
             num_sweep_steps = 2**7
         if num_chains is None:
             num_chains = 2**8
-        if dtype is None:
-            dtype = jnp.complex128
         if use_bias is None:
             use_bias = True
         if initial_params_gain is None:
@@ -102,8 +102,12 @@ class DeepBoltzmannQuantumState:
         if num_samples % num_chains != 0:
             num_samples_per_chain = num_samples // num_chains + (1 * (num_samples % num_chains != 0))
             num_samples = num_samples_per_chain * num_chains
-            print("Warning: number of samples is not divisible by the number of chains, rounding up to nearest multiple.")
-            print(f"num_samples: {num_samples}, num_chains: {num_chains}, num_samples_per_chain: {num_samples_per_chain}")
+            print(
+                "Warning: number of samples is not divisible by the number of chains, rounding up to nearest multiple."
+            )
+            print(
+                f"num_samples: {num_samples}, num_chains: {num_chains}, num_samples_per_chain: {num_samples_per_chain}"
+            )
 
         self.num_spins = num_spins
         self.hidden_layers = hidden_layers
@@ -112,12 +116,10 @@ class DeepBoltzmannQuantumState:
         self.num_thermalization_steps = num_thermalization_steps
         self.num_sweep_steps = num_sweep_steps
         self.num_chains = num_chains
-        self.dtype = dtype
         self.use_bias = use_bias
         self.initial_params_gain = initial_params_gain
 
         self.num_samples_per_chain = self.num_samples // self.num_chains
-        self.is_holomorphic = True if (dtype == jnp.complex64 or dtype == jnp.complex128) else False
         self.num_units_list = [num_spins] + hidden_layers
         self.num_units = sum(self.num_units_list)
         self.dummy_units = [jnp.ones((n,)) for n in self.num_units_list]
@@ -142,14 +144,20 @@ class DeepBoltzmannQuantumState:
         Returns:
             Tuple[jnp.ndarray, Callable]: The initial parameters of the quantum state and the unravel function.
         """
-        biases = [jnp.zeros((num_units,), dtype=self.dtype) for num_units in self.num_units_list]
+        biases = [
+            jnp.zeros(
+                (2, num_units),
+                dtype=jnp.float64,
+            )
+            for num_units in self.num_units_list
+        ]
         tempkeys = jax.random.split(prngkey, len(self.num_units_list) - 1)
         weights = [
             self.initial_params_gain
             * jax.random.normal(
                 tempkeys[i],
-                (self.num_units_list[i], self.num_units_list[i + 1]),
-                dtype=self.dtype,
+                (2, self.num_units_list[i], self.num_units_list[i + 1]),
+                dtype=jnp.float64,
             )
             / jnp.sqrt(self.num_units_list[i] + self.num_units_list[i + 1])
             for i in range(len(self.num_units_list) - 1)
@@ -161,6 +169,21 @@ class DeepBoltzmannQuantumState:
             params, unravel_params = jax.flatten_util.ravel_pytree(weights)
 
         return params, unravel_params
+
+    @partial(jax.jit, static_argnums=(0,))
+    def unpack_params(
+        self,
+        params,
+    ):
+        if self.use_bias:
+            biases, weights = self.unravel_params(params)
+        else:
+            weights = self.unravel_params(params)
+            biases = [jnp.zeros((numUnits,), dtype=jnp.float64) for numUnits in self.num_units_list]
+
+        weights = weights[0] + 1.0j * weights[1]
+        biases = biases[0] + 1.0j * biases[1]
+        return weights, biases
 
     @partial(jax.jit, static_argnums=(0,))
     def logpsi(
@@ -178,11 +201,7 @@ class DeepBoltzmannQuantumState:
         Returns:
             jnp.ndarray: Logarithm of the wavefunction amplitude.
         """
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
+        weights, biases = self.unpack_params(params)
 
         units = self.unravel_config(config)
         bias_terms = jnp.array([unit.T @ bias for unit, bias in zip(units, biases)])
@@ -234,12 +253,8 @@ class DeepBoltzmannQuantumState:
         # determines the ratio and as the visible units are conditionally independent
         # when given the first layer units
         # We can compute in parallel all the ratios
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
-
+        weights, biases = self.unpack_params(params)
+        
         units = self.unravel_config(config)
 
         visible_biases = biases[0]
@@ -263,11 +278,7 @@ class DeepBoltzmannQuantumState:
         Returns:
             jnp.ndarray: Local energy for sigma_y operators.
         """
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
+        weights, biases = self.unpack_params(params)
 
         units = self.unravel_config(config)
 
@@ -621,11 +632,8 @@ class DeepBoltzmannQuantumState:
             Tuple[jnp.ndarray, jnp.ndarray]: Generated samples and their endpoints.
         """
         tempkeys = jax.random.split(prngkey, self.num_chains)
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
+        weights, biases = self.unpack_params(params)
+            
         chains = self.vmapd_gibbs_chain(tempkeys, biases, weights)
         samples = jnp.reshape(chains, (-1, self.num_units))
         endpoints = chains[:, -1]
@@ -649,11 +657,8 @@ class DeepBoltzmannQuantumState:
             Tuple[jnp.ndarray, jnp.ndarray]: Updated samples and their endpoints.
         """
         tempkeys = jax.random.split(prngkey, self.num_chains)
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
+        weights, biases = self.unpack_params(params)
+
         chains = self.vmapd_gibbs_chain_from_starting_points(tempkeys, biases, weights, starting_points)
         samples = jnp.reshape(chains, (-1, self.num_units))
         endpoints = chains[:, -1]
@@ -677,11 +682,7 @@ class DeepBoltzmannQuantumState:
         """
         Runs a Gibbs chain with no sweeps or thermalization
         """
-        if self.use_bias:
-            (biases, weights) = self.unravel_params(params)
-        else:
-            weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=self.dtype) for numUnits in self.num_units_list]
+        weights, biases = self.unpack_params(params)
         prngkey, starting_units = self.base_sampler(prngkey)
         chain = [
             jnp.zeros(shape=(self.num_samples_per_chain, self.num_units_list[n]))
@@ -712,7 +713,9 @@ class DeepBoltzmannQuantumState:
         if not isinstance(self.num_spins, int) or self.num_spins <= 0:
             raise ValueError("num_spins must be a positive integer.")
 
-        if not isinstance(self.hidden_layers, list) or not all(isinstance(x, int) and x > 0 for x in self.hidden_layers):
+        if not isinstance(self.hidden_layers, list) or not all(
+            isinstance(x, int) and x > 0 for x in self.hidden_layers
+        ):
             raise ValueError("hidden_layers must be a list of positive integers.")
 
         if not isinstance(self.prngkey, jnp.ndarray):
@@ -729,9 +732,6 @@ class DeepBoltzmannQuantumState:
 
         if not isinstance(self.num_chains, int) or self.num_chains <= 0:
             raise ValueError("num_chains must be a positive integer.")
-
-        if not isinstance(self.dtype, type(jnp.float64)) and not isinstance(self.dtype, type(jnp.complex128)):
-            raise ValueError("dtype must be a supported JAX dtype: jnp.float64 or jnp.complex128.")
 
         if not isinstance(self.use_bias, bool):
             raise ValueError("use_bias must be a boolean value.")
