@@ -391,11 +391,11 @@ def main():
     )
     
     if data is None:
-        # make a failed.txt file
         print_log("Failed")
         os.makedirs(args.save_path, exist_ok=True)
-        with open(f"{args.save_path}/failed.txt", "w") as f:
-            f.write("Failed")
+        with open(f"{args.save_path}/early_stopped.txt", "w") as f:
+            f.write("Worker stopped early due to runtime limit")
+        return
             
 
     if data is not None:

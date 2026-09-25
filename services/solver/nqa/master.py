@@ -186,6 +186,7 @@ def stop_annealer(process: subprocess.Popen):
 def wait_for_trial_output(process: subprocess.Popen, save_path: str, max_runtime: int):
     finished_path = f"{save_path}/finished.txt"
     failed_path = f"{save_path}/failed.txt"
+    early_stopped_path = f"{save_path}/early_stopped.txt"
     data_path = f"{save_path}/data.npz"
     deadline = time.monotonic() + max_runtime + WORKER_RUNTIME_GRACE_SECONDS
 
@@ -212,12 +213,15 @@ def wait_for_trial_output(process: subprocess.Popen, save_path: str, max_runtime
     while True:
         finished_exists = os.path.exists(finished_path)
         failed_exists = os.path.exists(failed_path)
+        early_stopped_exists = os.path.exists(early_stopped_path)
 
         if finished_exists:
             return failed_exists, failure_details() if failed_exists else None
 
         return_code = process.poll()
         if return_code is not None:
+            if early_stopped_exists:
+                return True, "worker stopped early due to runtime limit"
             if failed_exists:
                 return True, failure_details()
             if return_code == 0 and os.path.exists(data_path):
@@ -261,6 +265,8 @@ def objective(trial):
         annealer_args["save_path"],
         annealer_args["max_runtime"],
     )
+    if failure_reason == "worker stopped early due to runtime limit":
+        raise optuna.TrialPruned(f"trial {trial.number} stopped early due to runtime limit")
     if failure_reason is not None:
         raise RuntimeError(f"trial {trial.number} failed: {failure_reason}")
     if trial_failed:
