@@ -189,7 +189,7 @@ def test_variational_annealer_early_stop_runtime_cap():
     )
 
     out = va.run(_mk(15), max_runtime=1e-12)  # effectively immediate cap
-    assert out is None  # Early stopping returns None
+    assert out is None  # Early stopping returns no result
 
 
 def test_variational_annealer_invalid_inputs_raise():
