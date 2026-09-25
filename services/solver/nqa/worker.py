@@ -149,24 +149,11 @@ parser.add_argument(
 
 # SR settings
 parser.add_argument(
-    "--sr_prefactor",
-    type=complex,
-    default=1.0 + 0.0j,
-    help="Prefactor for the natural gradients method.",
-)
-parser.add_argument(
     "--sr_diagonal_shift",
     type=float,
     default=1e-2,
     help="Diagonal shift applied to the FIM or NTK before computing its pseudoinverse. Default is 1e-2.",
 )
-parser.add_argument(
-    "--sr_method",
-    type=str,
-    default=None,
-    help="Method for the natural gradients. 'SR' to use standard SR, 'minSR' to use minSR or 'auto' to automatically chose the most convenient one depending on the other settings. Default is None, which uses the auto method.",
-)
-
 # Variational quantum state settings
 parser.add_argument(
     "--dbqs_num_hidden_layers",
@@ -364,8 +351,6 @@ def main():
         deep_boltzmann_quantum_state=vqs,
         local_hamiltonian=local_hamiltonian,
         diag_shift=args.sr_diagonal_shift,
-        method=args.sr_method,
-        prefactor=args.sr_prefactor,
         return_aux=True,
     )
     observables_dict = {
