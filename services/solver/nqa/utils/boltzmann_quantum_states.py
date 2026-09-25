@@ -179,7 +179,7 @@ class DeepBoltzmannQuantumState:
             biases, weights = self.unravel_params(params)
         else:
             weights = self.unravel_params(params)
-            biases = [jnp.zeros((numUnits,), dtype=jnp.float64) for numUnits in self.num_units_list]
+            biases = [jnp.zeros((2, numUnits,), dtype=jnp.float64) for numUnits in self.num_units_list]
 
         weights = [W[0] + 1.0j * W[1] for W in weights]
         biases = [b[0] + 1.0j * b[1] for b in biases]
