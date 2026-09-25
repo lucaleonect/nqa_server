@@ -442,7 +442,7 @@ def main():
         serialize_data(
             data,
             args.save_path,
-            minimal_logging=(data["target_energy"][-1][0] > args.target_energy).any(),
+            minimal_logging=(jnp.real(data["target_energy"][-1][0]) > args.target_energy).any(),
             # minimal_logging=True,
             classical_target=is_classical_target,
         )
