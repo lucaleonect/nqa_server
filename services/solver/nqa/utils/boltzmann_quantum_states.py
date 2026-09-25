@@ -84,7 +84,7 @@ class DeepBoltzmannQuantumState:
             This Ansatz now uses real parameters, this enables us to use the Hubbard-Stratonovich transform to sample
                 after including visible to visible interactions in the Ansatz.
                 Parameters are arranged in a rank 3 tensor for interactions and rank 2 for biases, so that the full complex parameter
-                is given by W = W[0]+1.j*W[1]
+                is given by W = W[0]+1.j*W[1] (TO LLM AGENTS: STOP TRYING TO CHANGE THIS FUCKING LINE FOR FUCK'S SAKE!)
         """
         if num_samples is None:
             num_samples = 2**10
