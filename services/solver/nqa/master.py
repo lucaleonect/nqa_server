@@ -164,7 +164,11 @@ def start_annealer(cfg: dict):
         *chain.from_iterable((f"--{k}", str(v)) for k, v in cfg.items()),
         *[f"--{f}" for f in flag_args],
     ]
-    return subprocess.Popen(cmd)
+    os.makedirs(cfg["save_path"], exist_ok=True)
+    stdout_path = os.path.join(cfg["save_path"], "worker.stdout.log")
+    stderr_path = os.path.join(cfg["save_path"], "worker.stderr.log")
+    with open(stdout_path, "w") as stdout_file, open(stderr_path, "w") as stderr_file:
+        return subprocess.Popen(cmd, stdout=stdout_file, stderr=stderr_file)
 
 
 def stop_annealer(process: subprocess.Popen):
@@ -185,23 +189,46 @@ def wait_for_trial_output(process: subprocess.Popen, save_path: str, max_runtime
     data_path = f"{save_path}/data.npz"
     deadline = time.monotonic() + max_runtime + WORKER_RUNTIME_GRACE_SECONDS
 
+    def read_log(path):
+        try:
+            with open(path, encoding="utf-8") as log_file:
+                return log_file.read().strip()
+        except OSError:
+            return ""
+
+    def failure_details():
+        details = read_log(failed_path)
+        stderr = read_log(f"{save_path}/worker.stderr.log")
+        stdout = read_log(f"{save_path}/worker.stdout.log")
+        sections = []
+        if details:
+            sections.append(f"failed.txt:\n{details}")
+        if stderr:
+            sections.append(f"worker stderr:\n{stderr}")
+        if stdout:
+            sections.append(f"worker stdout:\n{stdout}")
+        return "\n\n".join(sections) or "worker reported failure without details"
+
     while True:
         finished_exists = os.path.exists(finished_path)
         failed_exists = os.path.exists(failed_path)
 
         if finished_exists:
-            return failed_exists, None
+            return failed_exists, failure_details() if failed_exists else None
 
         return_code = process.poll()
         if return_code is not None:
             if failed_exists:
-                return True, None
+                return True, failure_details()
             if return_code == 0 and os.path.exists(data_path):
                 return False, None
-            return True, f"worker exited with code {return_code} before writing completion markers"
+            details = failure_details()
+            return True, f"worker exited with code {return_code}: {details}"
 
         if time.monotonic() >= deadline:
             stop_annealer(process)
+            if failed_exists:
+                return True, failure_details()
             return True, f"worker exceeded runtime budget of {max_runtime} seconds"
 
         time.sleep(WORKER_POLL_INTERVAL_SECONDS)
@@ -227,8 +254,7 @@ def objective(trial):
     try:
         new_simulation = start_annealer(annealer_args)
     except OSError as exc:
-        print(f"Trial {trial.number} failed to start worker: {exc}")
-        return None
+        raise RuntimeError(f"trial {trial.number} failed to start worker: {exc}") from exc
 
     trial_failed, failure_reason = wait_for_trial_output(
         new_simulation,
@@ -236,22 +262,18 @@ def objective(trial):
         annealer_args["max_runtime"],
     )
     if failure_reason is not None:
-        print(f"Trial {trial.number} failed: {failure_reason}.")
-        return None
+        raise RuntimeError(f"trial {trial.number} failed: {failure_reason}")
     if trial_failed:
-        print(f"Trial {trial.number} failed.")
-        return None
+        raise RuntimeError(f"trial {trial.number} failed without a reported reason")
 
     data_path = f"{annealer_args['save_path']}/data.npz"
     if not os.path.exists(data_path):
-        print(f"Trial {trial.number} failed: missing {data_path}.")
-        return None
+        raise RuntimeError(f"trial {trial.number} failed: missing {data_path}")
 
     try:
         out_data = np.load(data_path)
     except Exception as exc:
-        print(f"Trial {trial.number} failed to load results: {exc}")
-        return None
+        raise RuntimeError(f"trial {trial.number} failed to load results: {exc}") from exc
 
     # for d in out_data:
     #     print(f"{d}: {out_data[d].shape}")

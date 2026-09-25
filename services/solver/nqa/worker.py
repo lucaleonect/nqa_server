@@ -1,5 +1,6 @@
 # region: argparse
 import argparse
+import traceback
 
 parser = argparse.ArgumentParser(
     prog="Neural Quantum Annealer",
@@ -466,4 +467,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        failure_path = args.save_path or "./worker_failure"
+        os.makedirs(failure_path, exist_ok=True)
+        with open(os.path.join(failure_path, "failed.txt"), "w") as failure_file:
+            failure_file.write(traceback.format_exc())
+        raise
