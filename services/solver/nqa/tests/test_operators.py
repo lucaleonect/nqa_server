@@ -48,7 +48,6 @@ def test_local_sigma_x_ratio_matches_psi_ratio(use_bias):
 		num_thermalization_steps=2,
 		num_sweep_steps=2,
 		num_chains=2,
-		dtype=jnp.complex128,
 		use_bias=use_bias,
 		initial_params_gain=1e-1,
 	)
@@ -72,7 +71,6 @@ def test_local_sigma_y_relation_to_x():
 		num_thermalization_steps=2,
 		num_sweep_steps=2,
 		num_chains=2,
-		dtype=jnp.complex128,
 		use_bias=True,
 		initial_params_gain=1e-1,
 	)
@@ -94,7 +92,6 @@ def test_tfsk_energy_components_and_reductions(g_mode):
 		num_thermalization_steps=2,
 		num_sweep_steps=2,
 		num_chains=2,
-		dtype=jnp.complex128,
 		use_bias=True,
 		initial_params_gain=1e-1,
 	)
@@ -160,7 +157,6 @@ def test_measurement_function_matches_direct_stats(return_best):
 		num_thermalization_steps=2,
 		num_sweep_steps=2,
 		num_chains=4,
-		dtype=jnp.complex128,
 		use_bias=True,
 		initial_params_gain=1e-1,
 	)
@@ -209,7 +205,6 @@ def test_end_to_end_tfske_n4_measurement_consistency():
 		num_thermalization_steps=3,
 		num_sweep_steps=2,
 		num_chains=3,
-		dtype=jnp.complex128,
 		use_bias=True,
 		initial_params_gain=1e-1,
 	)

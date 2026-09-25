@@ -46,7 +46,6 @@ def _setup_dbqs_n4(num_samples=64, chains=8):
         num_thermalization_steps=2,
         num_sweep_steps=2,
         num_chains=chains,
-        dtype=jnp.complex128,
         use_bias=True,
         initial_params_gain=1e-1,
     )
