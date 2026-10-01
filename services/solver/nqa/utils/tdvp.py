@@ -129,43 +129,103 @@ def build_parametric_gradient_estimator(
         return_aux = False
 
     logpsi = deep_boltzmann_quantum_state.logpsi
-    vmapd_grad_logpsi_real = jax.vmap(jax.grad(lambda p, x: jnp.real(logpsi(p, x)), argnums=0), in_axes=(None, 0))
-    vmapd_grad_logpsi_imag = jax.vmap(jax.grad(lambda p, x: jnp.imag(logpsi(p, x)), argnums=0), in_axes=(None, 0))
-    vmapd_grad_logpsi = lambda p, x: vmapd_grad_logpsi_real(p, x) + 1.0j * vmapd_grad_logpsi_imag(p, x)
+    re_im = lambda p, x: jnp.stack([jnp.real(logpsi(p, x)), jnp.imag(logpsi(p, x))])
+    jac = jax.vmap(jax.jacrev(re_im, argnums=0), in_axes=(None, 0))  # (Ns, 2, Np)
     vmapd_local_hamiltonian = jax.vmap(local_hamiltonian, in_axes=(None, 0, None))
 
     @jax.jit
-    def estimate_gradients(
-        params: jnp.ndarray,
-        sample: jnp.ndarray,
-        couplings: jnp.ndarray,
-    ) -> jnp.ndarray:
-        """
-        Computes the gradients using the minSR method
+    def estimate_gradients(params, sample, couplings, diag_shift=diag_shift):
+        n_s = sample.shape[0]
+        sqrt_ns = jnp.sqrt(n_s)
 
-        Args:
-            params (jnp.ndarray): Parameters of the variational quantum state
-            sample (jnp.ndarray): Monte carlo samples to estimate the gradients
-            couplings (jnp.ndarray): couplings constant of the local Hamiltonian
+        J = jac(params, sample)  # (Ns, 2, Np)
+        J = J - J.mean(axis=0, keepdims=True)
+        O = jnp.concatenate([J[:, 0], J[:, 1]], 0) / sqrt_ns  # (2Ns, Np)
 
-        Returns:
-            jnp.ndarray: Gradients of the energy expectation value with respect to the variational parameters.
-        """
-        d_logpsi = vmapd_grad_logpsi(params, sample)
-        d_logpsi = d_logpsi - jnp.average(d_logpsi, axis=0, keepdims=True)
-        local_energies = vmapd_local_hamiltonian(params, sample, couplings)
-        avg_energy = jnp.average(local_energies)
-        energy_var = jnp.var(local_energies)
-        local_energies = local_energies - jnp.average(local_energies)
-        des = jnp.concatenate((d_logpsi.real, d_logpsi.imag), axis=0)
-        target = jnp.concatenate((local_energies.real, local_energies.imag), axis=0)
-        T_matrix = des @ des.T
-        T_matrix = T_matrix + diag_shift * jnp.eye(T_matrix.shape[0])
-        gradients = des.T @ jnp.linalg.pinv(T_matrix, rtol=p_inv_rcond) @ target
+        e_loc = vmapd_local_hamiltonian(params, sample, couplings)
+        avg_energy = e_loc.mean()
+        energy_var = jnp.var(e_loc)
+        eps = (e_loc - avg_energy) / sqrt_ns
+        eps = jnp.concatenate([eps.real, eps.imag])  # (2Ns,)
 
-        if return_aux:
-            return (gradients, avg_energy, energy_var)
-        else:
-            return gradients
+        T = O @ O.T + diag_shift * jnp.eye(O.shape[0], dtype=O.dtype)
+        x = jax.scipy.linalg.solve(T, eps, assume_a="pos")
+        update = O.T @ x  # O(Np * Ns)
+
+        return (update, avg_energy.real, energy_var) if return_aux else update
 
     return estimate_gradients
+
+
+# def build_parametric_gradient_estimator(
+#     deep_boltzmann_quantum_state: DeepBoltzmannQuantumState,
+#     local_hamiltonian: Callable[[jnp.ndarray, jnp.ndarray], CNumber],
+#     p_inv_rcond: Optional[float] = None,
+#     diag_shift: Optional[float] = None,
+#     return_aux: Optional[bool] = None,
+# ) -> Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray]:
+#     """
+#     Builds a function that estimates the gradient of the energy expectation value with respect to the variational
+#     parameters of the given variational quantum state using the Time-Dependent Variational Principle
+
+#     Args:
+#         deep_boltzmann_quantum_state (DeepBoltzmannQuantumState): Variational quantum state describing the system
+#         local_hamiltonian (Callable[[jnp.ndarray, jnp.ndarray, CNumber], CNumber]): Local Hamiltonian operator
+#             Expected Callable with sinature (params, config, couplings)->local_energy
+#         p_inv_rcond (float, optional): Pseudo-inverse rcond parameter for the matrix inversion. Defaults to 1e-10.
+#         diag_shift (float, optional): Diagonal shift for the matrix inversion. Defaults to 1e-3.
+#         return_aux (bool, optional): Whether to return also the energy and energy variance. Defaults to False.
+
+#     Returns:
+#         Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray]: Function that estimates the gradient of the energy expectation value
+#             with respect to the variational parameters of the given variational quantum state using the Time-Dependent Variational Principle
+#             (params, mc_samples, couplings)->(grad, avg_energy, energy_var)
+#     """
+#     if p_inv_rcond is None:
+#         p_inv_rcond = 1e-10
+#     if diag_shift is None:
+#         diag_shift = 1e-2
+#     if return_aux is None:
+#         return_aux = False
+
+#     logpsi = deep_boltzmann_quantum_state.logpsi
+#     vmapd_grad_logpsi_real = jax.vmap(jax.grad(lambda p, x: jnp.real(logpsi(p, x)), argnums=0), in_axes=(None, 0))
+#     vmapd_grad_logpsi_imag = jax.vmap(jax.grad(lambda p, x: jnp.imag(logpsi(p, x)), argnums=0), in_axes=(None, 0))
+#     vmapd_grad_logpsi = lambda p, x: vmapd_grad_logpsi_real(p, x) + 1.0j * vmapd_grad_logpsi_imag(p, x)
+#     vmapd_local_hamiltonian = jax.vmap(local_hamiltonian, in_axes=(None, 0, None))
+
+#     @jax.jit
+#     def estimate_gradients(
+#         params: jnp.ndarray,
+#         sample: jnp.ndarray,
+#         couplings: jnp.ndarray,
+#     ) -> jnp.ndarray:
+#         """
+#         Computes the gradients using the minSR method
+
+#         Args:
+#             params (jnp.ndarray): Parameters of the variational quantum state
+#             sample (jnp.ndarray): Monte carlo samples to estimate the gradients
+#             couplings (jnp.ndarray): couplings constant of the local Hamiltonian
+
+#         Returns:
+#             jnp.ndarray: Gradients of the energy expectation value with respect to the variational parameters.
+#         """
+#         d_logpsi = vmapd_grad_logpsi(params, sample)
+#         d_logpsi = d_logpsi - jnp.average(d_logpsi, axis=0, keepdims=True)
+#         local_energies = vmapd_local_hamiltonian(params, sample, couplings)
+#         avg_energy = jnp.average(local_energies)
+#         energy_var = jnp.var(local_energies)
+#         local_energies = local_energies - jnp.average(local_energies)
+#         des = jnp.concatenate((d_logpsi.real, d_logpsi.imag), axis=0)
+#         target = jnp.concatenate((local_energies.real, local_energies.imag), axis=0)
+#         T_matrix = des @ des.T
+#         T_matrix = T_matrix + diag_shift * jnp.eye(T_matrix.shape[0])
+#         gradients = des.T @ (jnp.linalg.pinv(T_matrix, rtol=p_inv_rcond) @ target)
+
+#         if return_aux:
+#             return (gradients, avg_energy, energy_var)
+#         else:
+#             return gradients
+
+#     return estimate_gradients
