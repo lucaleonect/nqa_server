@@ -285,10 +285,13 @@ def objective(trial):
     #     print(f"{d}: {out_data[d].shape}")
 
     best_replica = out_data["best_replica_index"]
-    obj_value = out_data["target_energy"][-1, 0, best_replica]
+    obj_value = np.mean(out_data["target_energy"][-1, 0, :])
 
     num_replicas = out_data["target_energy"].shape[2]
 
+    trial.set_user_attr(
+        "Best Replica Energy", np.min([float(out_data["target_energy"][-1, 0, r].real) for r in range(num_replicas)])
+    )
     trial.set_user_attr(
         "Final Energies", [float(out_data["target_energy"][-1, 0, r].real) for r in range(num_replicas)]
     )
