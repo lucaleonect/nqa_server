@@ -281,14 +281,8 @@ def objective(trial):
     except Exception as exc:
         raise RuntimeError(f"trial {trial.number} failed to load results: {exc}") from exc
 
-    # for d in out_data:
-    #     print(f"{d}: {out_data[d].shape}")
-
-    best_replica = out_data["best_replica_index"]
     obj_value = np.mean(out_data["target_energy"][-1, 0, :])
-
     num_replicas = out_data["target_energy"].shape[2]
-
     trial.set_user_attr(
         "Best Replica Energy", np.min([float(out_data["target_energy"][-1, 0, r].real) for r in range(num_replicas)])
     )
@@ -310,8 +304,6 @@ def objective(trial):
     )
     trial.set_user_attr("Num Params", int(out_data["num_params"]))
     trial.set_user_attr("Runtime", float(out_data["runtime"]))
-    # trial.set_user_attr("Resampled Energies", [float(e) for e in out_data["resampled_target_energy"]])
-    # trial.set_user_attr("Resampled Energy Variances", [float(ev) for ev in out_data["resampled_target_energy_var"]])
 
     return obj_value
 
