@@ -215,7 +215,34 @@ class DeepBoltzmannQuantumState:
         vv_term = units[0].T @ ((J @ J.T) + 1.0j * K) @ units[0]
         return jnp.sum(bias_terms) + jnp.sum(interaction_terms) + vv_term
 
-    # This can be computed more efficiently
+    @partial(jax.jit, static_argnums=(0,))
+    def psi_ratio_same_hidden(
+        self,
+        params,
+        config_num,
+        config_den,
+    ):
+        """
+        Computes the ratio of wavefunction amplitudes for two configurations
+        that share the same hidden spins configurations
+
+        Note:
+            this function does NOT perform any check on the validity of the input,
+            and if given two configurations that do not share the same hidden spins
+            it will return a wrong result.
+        """
+        weights, biases, J, K = self.unpack_params(params)
+        units_num = self.unravel_config(config_num)
+        units_den = self.unravel_config(config_den)
+
+        return jnp.exp(
+            jnp.sum(
+                (jnp.outer(units_num[0], units_num[0]) - jnp.outer(units_den[0], units_den[0])) * (J @ J.T + 1.0j * K)
+            )
+            + (units_num[0] - units_den[0]).T @ weights[0] @ units_num[1]
+            + biases[0].T @ (units_num[0] - units_den[0])
+        )
+
     @partial(jax.jit, static_argnums=(0,))
     def psi_ratio_fn(
         self,
@@ -255,7 +282,7 @@ class DeepBoltzmannQuantumState:
         Returns:
             jnp.ndarray: Ratio of wavefunction amplitudes.
         """
-        return jnp.exp(2*jnp.real(self.logpsi(params, config_num) - self.logpsi(params, config_den)))
+        return jnp.exp(2 * jnp.real(self.logpsi(params, config_num) - self.logpsi(params, config_den)))
 
     @partial(jax.jit, static_argnums=(0,))
     def local_sigma_xs(
