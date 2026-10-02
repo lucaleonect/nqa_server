@@ -84,6 +84,7 @@ def serialize_data(data, save_path, minimal_logging=True, classical_target=False
                 best_energy_so_far[:, r],
                 label=f"Best target energy (replica {r})",
                 linestyle="dashed",
+                c="blue",
             )
     if "catalyst_energy" in data:
         plt.plot(np.asarray(data["catalyst_energy"])[:, 0].real, label="Catalyst energy", c="green")
