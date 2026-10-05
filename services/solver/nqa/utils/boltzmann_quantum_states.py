@@ -491,7 +491,9 @@ class DeepBoltzmannQuantumState:
         p_odds = self.prob_odds_given_evens(biases, weights, new_units[::2])
         new_odds = [2 * jax.random.bernoulli(tempkeys[i], p=p) - 1 for i, p in enumerate(p_odds)]
         new_units[1::2] = new_odds
-        aux_fields = jax.random.multivariate_normal(tempkeys[-1], 4 * J.T @ units[0], 4 * jnp.eye(units[0].size))
+        # aux_fields = jax.random.multivariate_normal(tempkeys[-1], 4 * J.T @ units[0], 4 * jnp.eye(units[0].size))
+        aux_fields = 2 * J.T @ units[0] + jax.random.normal(tempkeys[-1], units[0].shape)
+
 
         prngkey, *tempkeys = jax.random.split(prngkey, len(self.num_units_list) + 1)
         p_evens = self.prob_evens_given_odds(biases, weights, J, new_units[1::2], aux_fields)
