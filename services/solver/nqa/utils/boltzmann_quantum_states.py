@@ -161,7 +161,7 @@ class DeepBoltzmannQuantumState:
             / jnp.sqrt(self.num_units_list[i] + self.num_units_list[i + 1])
             for i in range(len(self.num_units_list) - 1)
         ]
-        J, K = jax.random.normal(
+        J, K = 1e-1 * jax.random.normal(
             tempkeys[-1],
             (2, self.num_units_list[0], self.num_units_list[0]),
             dtype=jnp.float64,
